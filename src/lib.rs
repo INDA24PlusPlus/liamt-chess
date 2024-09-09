@@ -1,6 +1,6 @@
 const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PieceType {
     King,
     Queen,
@@ -18,8 +18,8 @@ pub enum Color {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
-    x: usize,
-    y: usize,
+    pub x: usize,
+    pub y: usize,
 }
 
 impl Position {
@@ -27,6 +27,12 @@ impl Position {
         let x = (self.x as u8 + b'a') as char;
         let y = (self.y as u8 + b'1') as char;
         format!("{}{}", x, y)
+    }
+    pub fn from_str(s: &str) -> Self {
+        let s = s.to_lowercase();
+        let x = s.chars().nth(0).unwrap() as usize - 'a' as usize;
+        let y = s.chars().nth(1).unwrap() as usize - '1' as usize;
+        Position { x, y }
     }
 }
 
@@ -37,16 +43,39 @@ pub struct Piece {
     pub position: Position,
 }
 
+pub enum Status {
+    Active,
+    Check,
+    Checkmate,
+    Stalemate,
+}
+
 pub type Board = [Option<Piece>; 64];
 
-pub struct Fen {}
-impl Fen {
-    pub fn parse_fen(fen_str: &str) -> Board {
+pub struct Chess {
+    pub board: Board,
+    pub turn: Color,
+    pub status: Status,
+    pub winner: Option<Color>,
+}
+
+impl Default for Chess {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Chess {
+    pub fn new() -> Self {
+        Chess::from_fen(STARTING_FEN)
+    }
+
+    pub fn parse_fen_board(board_str: &str) -> Board {
         let mut board = [None; 64];
         let mut row = 7;
         let mut col = 0;
 
-        for c in fen_str.chars() {
+        for c in board_str.chars() {
             match c {
                 '/' => {
                     row -= 1;
@@ -85,24 +114,36 @@ impl Fen {
             }
         }
 
-        return board;
+        board
     }
-}
 
-pub struct Chess {
-    board: Board,
-    turn: Color,
-}
+    pub fn from_fen(fen: &str) -> Self {
+        let mut parts = fen.split_whitespace();
+        let board = Chess::parse_fen_board(parts.next().unwrap());
+        let turn = match parts.next().unwrap() {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => panic!("Invalid turn"),
+        };
 
-impl Chess {
-    pub fn new() -> Self {
         Self {
-            board: [None; 64],
-            turn: Color::White,
+            board,
+            turn,
+            winner: None,
+            status: Status::Active,
         }
     }
-}
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+    pub fn move_piece(&mut self, from: Position, to: Position) {
+        let from_index = from.y * 8 + from.x;
+        let to_index = to.y * 8 + to.x;
+
+        let piece = self.board[from_index].unwrap();
+        self.board[to_index] = Some(Piece {
+            piece_type: piece.piece_type,
+            color: piece.color,
+            position: to,
+        });
+        self.board[from_index] = None;
+    }
 }

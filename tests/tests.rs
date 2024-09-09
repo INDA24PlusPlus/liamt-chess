@@ -3,8 +3,22 @@ mod tests {
     use chess::*;
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn check_turn() {
+        let chess = Chess::new();
+        assert_eq!(chess.turn, Color::White);
+    }
+
+    #[test]
+    fn check_kings() {
+        let chess = Chess::new();
+        let kings = chess
+            .board
+            .iter()
+            .filter(|&p| match p {
+                Some(piece) => piece.piece_type == PieceType::King,
+                None => false,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(kings.len(), 2);
     }
 }
