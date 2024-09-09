@@ -1,4 +1,29 @@
+pub mod pieces;
+use pieces::validate_piece_move;
+
 const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Color {
+    Black,
+    White,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Status {
+    Active,
+    Check,
+    Checkmate,
+    Stalemate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ValidationResult {
+    Valid,
+    InvalidPosition,
+    InvalidMove,
+    InvalidTurn,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PieceType {
@@ -11,12 +36,6 @@ pub enum PieceType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Color {
-    Black,
-    White,
-}
-
-#[derive(Clone, Copy, Debug)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -41,13 +60,6 @@ pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
     pub position: Position,
-}
-
-pub enum Status {
-    Active,
-    Check,
-    Checkmate,
-    Stalemate,
 }
 
 pub type Board = [Option<Piece>; 64];
@@ -134,16 +146,40 @@ impl Chess {
         }
     }
 
-    pub fn move_piece(&mut self, from: Position, to: Position) {
+    pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
+        let from_index = from.y * 8 + from.x;
+        let to_index = to.y * 8 + to.x;
+
+        if from_index >= 64 || to_index >= 64 {
+            return ValidationResult::InvalidPosition;
+        }
+
+        let piece = self.board[from_index].unwrap();
+        if piece.color != self.turn {
+            return ValidationResult::InvalidTurn;
+        }
+
+        validate_piece_move(self, piece, to)
+    }
+
+    pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
+        let validation_res = self.validate_move(from, to);
+        if validation_res != ValidationResult::Valid {
+            return validation_res;
+        }
+
         let from_index = from.y * 8 + from.x;
         let to_index = to.y * 8 + to.x;
 
         let piece = self.board[from_index].unwrap();
+
         self.board[to_index] = Some(Piece {
             piece_type: piece.piece_type,
             color: piece.color,
             position: to,
         });
         self.board[from_index] = None;
+
+        ValidationResult::Valid
     }
 }
