@@ -1,0 +1,64 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../chess-test"
+		}
+	],
+	"settings": {},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "Build and Test liamt-chess",
+				"type": "shell",
+				"command": "cargo test", // Run tests as part of the build process
+				"options": {
+					"cwd": "${workspaceFolder:liamt-chess}"
+				},
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"problemMatcher": [
+					"$rustc"
+				]
+			},
+			{
+				"label": "Build chess-test",
+				"type": "shell",
+				"command": "cargo build",
+				"options": {
+					"cwd": "${workspaceFolder:chess-test}"
+				},
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"dependsOn": "Build and Test liamt-chess", // Depend on liamt-chess
+				"problemMatcher": [
+					"$rustc"
+				]
+			},
+			{
+				"label": "Build and Run All",
+				"type": "shell",
+				"command": "cargo run", // Run the frontend after building both
+				"options": {
+					"cwd": "${workspaceFolder:chess-test}"
+				},
+				"dependsOn": [
+					"Build and Test liamt-chess",
+					"Build chess-test"
+				],
+				"group": {
+					"kind": "build",
+					"isDefault": false
+				},
+				"problemMatcher": []
+			}
+		]
+	}
+}
