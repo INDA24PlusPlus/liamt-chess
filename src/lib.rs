@@ -1,5 +1,5 @@
-pub mod pieces;
-use pieces::validate_piece_move;
+pub mod moves;
+use moves::{generate_moves, Move, ValidBoardMoves};
 
 const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -55,7 +55,7 @@ impl Position {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
@@ -69,6 +69,7 @@ pub struct Chess {
     pub turn: Color,
     pub status: Status,
     pub winner: Option<Color>,
+    valid_moves: ValidBoardMoves,
 }
 
 impl Default for Chess {
@@ -138,12 +139,16 @@ impl Chess {
             _ => panic!("Invalid turn"),
         };
 
-        Self {
+        let mut chess = Self {
             board,
             turn,
             winner: None,
             status: Status::Active,
-        }
+            valid_moves: std::array::from_fn(|_| None),
+        };
+        chess.valid_moves = generate_moves(&chess);
+
+        chess
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
@@ -159,7 +164,13 @@ impl Chess {
             return ValidationResult::InvalidTurn;
         }
 
-        validate_piece_move(self, piece, to)
+        let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
+
+        if valid_piece_moves.iter().any(|m| m.to == to) {
+            ValidationResult::Valid
+        } else {
+            ValidationResult::InvalidMove
+        }
     }
 
     pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
@@ -179,6 +190,11 @@ impl Chess {
             position: to,
         });
         self.board[from_index] = None;
+
+        self.turn = match self.turn {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
 
         ValidationResult::Valid
     }
