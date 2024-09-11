@@ -152,6 +152,8 @@ impl Chess {
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
+        println!("{:?} {:?}", from, to);
+
         let from_index = from.y * 8 + from.x;
         let to_index = to.y * 8 + to.x;
 
@@ -165,6 +167,8 @@ impl Chess {
         }
 
         let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
+
+        println!("{:?}", valid_piece_moves);
 
         if valid_piece_moves.iter().any(|m| m.to == to) {
             ValidationResult::Valid
@@ -195,6 +199,8 @@ impl Chess {
             Color::White => Color::Black,
             Color::Black => Color::White,
         };
+
+        self.valid_moves = generate_moves(self);
 
         ValidationResult::Valid
     }
