@@ -1,4 +1,4 @@
-use crate::{Chess, Piece, PieceType, Position, ValidationResult};
+use crate::{Chess, Color, Piece, PieceType, Position};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Move {
@@ -212,50 +212,26 @@ fn valid_moves_knight(chess: &Chess, piece: Piece) -> Vec<Move> {
     validate_possible_moves(chess, piece, possible_moves)
 }
 fn valid_moves_pawn(chess: &Chess, piece: Piece) -> Vec<Move> {
+    let mut moves = vec![(0, 1), (1, 1), (-1, 1)];
+
+    //let abs_moves = relative_to_absolute_moves(piece, moves);
+
+    if (piece.color == Color::White && piece.position.y == 1)
+        || (piece.color == Color::Black && piece.position.y == 6)
+    {
+        moves.push((0, 2));
+    }
+
+    moves = moves
+        .into_iter()
+        .map(|(x, y)| {
+            (
+                x + (piece.position.x as i8),
+                y * (piece.color as i8) + (piece.position.y as i8),
+            )
+        })
+        .filter(|(x, y)| if piece.color == Color::White &&  { y >= &0 } else { y < &8 })
+        .collect();
+
     Vec::new()
 }
-
-/* pub fn validate_piece_move(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    match piece.piece_type {
-        PieceType::King => validate_king(chess, piece, to),
-        PieceType::Queen => validate_queen(chess, piece, to),
-        PieceType::Rook => validate_rook(chess, piece, to),
-        PieceType::Bishop => validate_bishop(chess, piece, to),
-        PieceType::Knight => validate_knight(chess, piece, to),
-        PieceType::Pawn => validate_pawn(chess, piece, to),
-    }
-}
-
-fn validate_king(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    let moves = [
-        (1, 0),
-        (1, 1),
-        (0, 1),
-        (-1, 1),
-        (-1, 0),
-        (-1, -1),
-        (0, -1),
-        (1, -1),
-    ];
-    ValidationResult::Valid
-}
-
-fn validate_queen(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    ValidationResult::Valid
-}
-
-fn validate_rook(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    ValidationResult::Valid
-}
-
-fn validate_bishop(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    ValidationResult::Valid
-}
-
-fn validate_knight(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    ValidationResult::Valid
-}
-
-fn validate_pawn(chess: &Chess, piece: Piece, to: Position) -> ValidationResult {
-    ValidationResult::Valid
-} */

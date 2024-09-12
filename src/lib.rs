@@ -5,8 +5,8 @@ const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
-    Black,
-    White,
+    Black = -1,
+    White = 1,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
