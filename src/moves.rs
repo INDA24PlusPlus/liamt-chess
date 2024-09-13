@@ -47,6 +47,30 @@ pub fn generate_moves(chess: &Chess) -> ValidBoardMoves {
     valid_moves
 }
 
+fn validate_pre_moves(chess: &Chess, possible_move: &PossibleMove) -> bool {
+    let x = possible_move.x;
+    let y = possible_move.y;
+
+    match &possible_move.pre_moves {
+        Some(pre_moves) => {
+            let mut valid = true;
+            for (px, py) in pre_moves.iter() {
+                let tile = chess.board[(py * 8 + px) as usize];
+                if tile.is_some() {
+                    valid = false;
+                    break;
+                }
+            }
+            if !valid {
+                return false;
+            }
+        }
+        None => {}
+    }
+
+    true
+}
+
 fn validate_possible_moves(
     chess: &Chess,
     piece: Piece,
@@ -138,14 +162,18 @@ fn generate_directional_possible_moves(
     possible_moves
 }
 
+fn relative_to_absolut_move(piece: Piece, relative_move: (i8, i8)) -> PossibleMove {
+    PossibleMove {
+        x: piece.position.x as i8 + relative_move.0,
+        y: piece.position.y as i8 + relative_move.1,
+        pre_moves: None,
+    }
+}
+
 fn relative_to_absolute_moves(piece: Piece, relative_moves: Vec<(i8, i8)>) -> Vec<PossibleMove> {
     relative_moves
         .iter()
-        .map(|(x, y)| PossibleMove {
-            x: piece.position.x as i8 + x,
-            y: piece.position.y as i8 + y,
-            pre_moves: None,
-        })
+        .map(|(x, y)| relative_to_absolut_move(piece, (*x, *y)))
         .collect()
 }
 
@@ -230,7 +258,6 @@ fn valid_moves_pawn(chess: &Chess, piece: Piece) -> Vec<Move> {
                 y * (piece.color as i8) + (piece.position.y as i8),
             )
         })
-        .filter(|(x, y)| if piece.color == Color::White &&  { y >= &0 } else { y < &8 })
         .collect();
 
     Vec::new()
