@@ -63,4 +63,10 @@ mod tests {
         chess.move_piece(Position::from_str("b6"), Position::from_str("b7"));
         assert_eq!(chess.status, Status::Checkmate);
     }
+
+    /* #[test]
+    fn check_checkmate_3() {
+        let chess = Chess::from_fen("k7/8/8/8/8/8/8/QR6 w");
+        assert_eq!(chess.status, Status::Checkmate);
+    } */
 }

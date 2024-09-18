@@ -11,7 +11,7 @@ pub enum Color {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Status {
-    Active,
+    Chilling,
     Check,
     Checkmate,
     Stalemate,
@@ -70,6 +70,7 @@ pub struct Chess {
     pub turn: Color,
     pub status: Status,
     pub winner: Option<Color>,
+    pub awaiting_promotion_piece: Option<Piece>,
     valid_moves: ValidBoardMoves,
 }
 
@@ -144,16 +145,17 @@ impl Chess {
             board,
             turn,
             winner: None,
-            status: Status::Active,
+            status: Status::Chilling,
             valid_moves: std::array::from_fn(|_| None),
+            awaiting_promotion_piece: None,
         };
-        chess.valid_moves = generate_moves(&chess.board);
+        chess.update();
 
         chess
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
-        if self.status != Status::Active {
+        if self.status != Status::Chilling && self.status != Status::Check {
             return ValidationResult::InvalidTurn;
         }
 
@@ -193,31 +195,12 @@ impl Chess {
 
         let new_valid_moves = generate_moves(&validate_board);
 
-        let is_check = self.check_check(&validate_board, &new_valid_moves);
-
         let next_turn = match self.turn {
             Color::White => Color::Black,
             Color::Black => Color::White,
         };
 
-        let opponent_stuck = self.cant_move(&validate_board, &new_valid_moves, next_turn);
-
-        if is_check.is_some() {
-            let is_check = is_check.unwrap();
-            if is_check.contains(&self.turn) {
-                return ValidationResult::InvalidMove;
-            }
-
-            if opponent_stuck {
-                return ValidationResult::Valid(Status::Checkmate);
-            }
-
-            return ValidationResult::Valid(Status::Check);
-        } else if opponent_stuck {
-            return ValidationResult::Valid(Status::Stalemate);
-        }
-
-        ValidationResult::Valid(Status::Active)
+        self.get_board_status(&validate_board, &new_valid_moves, next_turn)
     }
 
     fn cant_move(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
@@ -291,20 +274,105 @@ impl Chess {
 
                 self.valid_moves = generate_moves(&self.board);
 
+                self.awaiting_promotion_piece = self.check_for_promotion();
+
+                if self.awaiting_promotion_piece.is_some() {
+                    self.status = Status::AwaitingPromotion;
+                }
+
                 ValidationResult::Valid(self.status)
             }
             _ => validation_res,
         }
     }
 
-    pub fn is_check(&self) -> Option<Color> {
-        let check_res = self.check_check(&self.board, &self.valid_moves);
-        if check_res.is_none() {
-            return None;
+    fn update(&mut self) {
+        self.valid_moves = generate_moves(&self.board);
+
+        let next_turn = match self.turn {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
+
+        let validation_res = self.get_board_status(&self.board, &self.valid_moves, next_turn);
+
+        self.status = match validation_res {
+            ValidationResult::Valid(s) => s,
+            _ => self.status,
+        };
+
+        self.awaiting_promotion_piece = self.check_for_promotion();
+
+        if self.awaiting_promotion_piece.is_some() {
+            self.status = Status::AwaitingPromotion;
+        }
+    }
+
+    fn get_board_status(
+        &self,
+        board: &Board,
+        valid_moves: &ValidBoardMoves,
+        turn: Color,
+    ) -> ValidationResult {
+        let is_check = self.check_check(board, valid_moves);
+
+        let opponent_stuck = self.cant_move(board, valid_moves, turn);
+
+        println!("stuck: {:?}", opponent_stuck);
+
+        if is_check.is_some() {
+            let is_check = is_check.unwrap();
+            if is_check.contains(&self.turn) {
+                return ValidationResult::InvalidMove;
+            }
+
+            if opponent_stuck {
+                return ValidationResult::Valid(Status::Checkmate);
+            }
+
+            return ValidationResult::Valid(Status::Check);
+        } else if opponent_stuck {
+            return ValidationResult::Valid(Status::Stalemate);
         }
 
-        //self.board can't be in double check
-        Some(check_res.unwrap()[0])
+        ValidationResult::Valid(Status::Chilling)
+    }
+
+    pub fn is_check(&self) -> Option<Color> {
+        let check_res = self.check_check(&self.board, &self.valid_moves);
+        match check_res {
+            Some(check_colors) => Some(check_colors[0]),
+            None => None,
+        }
+    }
+
+    pub fn promote_piece(&mut self, piece_type: PieceType) -> bool {
+        if self.status != Status::AwaitingPromotion || self.awaiting_promotion_piece.is_none() {
+            return false;
+        }
+
+        match piece_type {
+            PieceType::King | PieceType::Pawn => return false,
+            _ => {}
+        }
+
+        let piece = self.awaiting_promotion_piece.unwrap();
+
+        let index = piece.position.y * 8 + piece.position.x;
+
+        self.board[index] = Some(Piece {
+            piece_type,
+            color: piece.color,
+            position: piece.position,
+        });
+
+        self.awaiting_promotion_piece = None;
+
+        self.status = Status::Chilling;
+
+        self.update();
+
+        true
     }
 
     fn check_check(&self, board: &Board, valid_moves: &ValidBoardMoves) -> Option<Vec<Color>> {
@@ -351,5 +419,22 @@ impl Chess {
             return None;
         }
         Some(check_colors)
+    }
+
+    fn check_for_promotion(&self) -> Option<Piece> {
+        if self.awaiting_promotion_piece.is_some() {
+            return self.awaiting_promotion_piece;
+        }
+
+        for piece in self.board.iter().flatten() {
+            if piece.piece_type == PieceType::Pawn
+                && ((piece.color == Color::White && piece.position.y == 7)
+                    || (piece.color == Color::Black && piece.position.y == 0))
+            {
+                return Some(*piece);
+            }
+        }
+
+        None
     }
 }
