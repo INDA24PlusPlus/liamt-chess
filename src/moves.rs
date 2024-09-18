@@ -48,9 +48,6 @@ pub fn generate_moves(board: &Board) -> ValidBoardMoves {
 }
 
 fn validate_pre_moves(board: &Board, possible_move: &PossibleMove) -> bool {
-    let x = possible_move.x;
-    let y = possible_move.y;
-
     match &possible_move.pre_moves {
         Some(pre_moves) => {
             let mut valid = true;
@@ -169,7 +166,7 @@ fn valid_moves_king(board: &Board, piece: Piece) -> Vec<Move> {
         (-1, 0),
         (0, -1),
         (1, 1),
-        (-1, 1),
+        (1, -1),
         (-1, 1),
         (-1, -1),
     ];
@@ -242,7 +239,7 @@ fn valid_moves_pawn(board: &Board, piece: Piece) -> Vec<Move> {
     {
         let mov = convert_move(&piece, 0, 2);
         let target_tile = board[(mov.y * 8 + mov.x) as usize];
-        if (target_tile.is_none()) {
+        if target_tile.is_none() {
             moves.push(mov);
         }
     }

@@ -200,10 +200,62 @@ impl Chess {
             if is_check.contains(&self.turn) {
                 return ValidationResult::InvalidMove;
             }
+
+            let next_turn = match self.turn {
+                Color::White => Color::Black,
+                Color::Black => Color::White,
+            };
+
+            let is_checkmate = self.check_checkmate(&validate_board, &new_valid_moves, next_turn);
+
+            if is_checkmate {
+                return ValidationResult::Valid(Status::Checkmate);
+            }
+
             return ValidationResult::Valid(Status::Check);
         }
 
         ValidationResult::Valid(Status::Active)
+    }
+
+    fn check_checkmate(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
+        for mov in valid_moves.iter() {
+            if mov.is_none() {
+                continue;
+            }
+
+            let mov = mov.as_ref().unwrap();
+
+            for m in mov.iter() {
+                if m.piece.color != color {
+                    continue;
+                }
+
+                let from_index = m.piece.position.y * 8 + m.piece.position.x;
+                let to_index = m.to.y * 8 + m.to.x;
+
+                let piece = board[from_index].unwrap();
+
+                let mut validate_board: [Option<Piece>; 64] = *board;
+
+                validate_board[to_index] = Some(Piece {
+                    piece_type: piece.piece_type,
+                    color: piece.color,
+                    position: m.to,
+                });
+                validate_board[from_index] = None;
+
+                let new_valid_moves = generate_moves(&validate_board);
+
+                let is_check = self.check_check(&validate_board, &new_valid_moves);
+
+                if !is_check.is_some_and(|c| c.contains(&color)) {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
