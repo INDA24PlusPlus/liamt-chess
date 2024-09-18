@@ -199,7 +199,7 @@ fn valid_moves_rook(board: &Board, piece: Piece) -> Vec<Move> {
     validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_bishop(board: &Board, piece: Piece) -> Vec<Move> {
-    let directions = vec![(1, 1), (-1, 1), (-1, 1), (-1, -1)];
+    let directions = vec![(1, 1), (-1, 1), (1, -1), (-1, -1)];
 
     let possible_moves = generate_directional_possible_moves(piece.position, directions);
 

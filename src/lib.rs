@@ -153,7 +153,9 @@ impl Chess {
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
-        println!("{:?} {:?}", from, to);
+        if self.status != Status::Active {
+            return ValidationResult::InvalidTurn;
+        }
 
         let from_index = from.y * 8 + from.x;
         let to_index = to.y * 8 + to.x;
@@ -176,8 +178,6 @@ impl Chess {
 
         let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
 
-        //println!("{:?}", valid_piece_moves);
-
         if !valid_piece_moves.iter().any(|m| m.to == to) {
             return ValidationResult::InvalidMove;
         }
@@ -195,30 +195,32 @@ impl Chess {
 
         let is_check = self.check_check(&validate_board, &new_valid_moves);
 
+        let next_turn = match self.turn {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
+
+        let opponent_stuck = self.cant_move(&validate_board, &new_valid_moves, next_turn);
+
         if is_check.is_some() {
             let is_check = is_check.unwrap();
             if is_check.contains(&self.turn) {
                 return ValidationResult::InvalidMove;
             }
 
-            let next_turn = match self.turn {
-                Color::White => Color::Black,
-                Color::Black => Color::White,
-            };
-
-            let is_checkmate = self.check_checkmate(&validate_board, &new_valid_moves, next_turn);
-
-            if is_checkmate {
+            if opponent_stuck {
                 return ValidationResult::Valid(Status::Checkmate);
             }
 
             return ValidationResult::Valid(Status::Check);
+        } else if opponent_stuck {
+            return ValidationResult::Valid(Status::Stalemate);
         }
 
         ValidationResult::Valid(Status::Active)
     }
 
-    fn check_checkmate(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
+    fn cant_move(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
         for mov in valid_moves.iter() {
             if mov.is_none() {
                 continue;
@@ -273,6 +275,12 @@ impl Chess {
                     position: to,
                 });
                 self.board[from_index] = None;
+
+                if status == Status::Checkmate {
+                    self.winner = Some(self.turn);
+                } else if status == Status::Stalemate {
+                    self.winner = None;
+                }
 
                 self.turn = match self.turn {
                     Color::White => Color::Black,
