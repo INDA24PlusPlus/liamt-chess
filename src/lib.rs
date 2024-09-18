@@ -15,11 +15,12 @@ pub enum Status {
     Check,
     Checkmate,
     Stalemate,
+    AwaitingPromotion,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ValidationResult {
-    Valid,
+    Valid(Status),
     InvalidPosition,
     InvalidMove,
     InvalidTurn,
@@ -146,7 +147,7 @@ impl Chess {
             status: Status::Active,
             valid_moves: std::array::from_fn(|_| None),
         };
-        chess.valid_moves = generate_moves(&chess);
+        chess.valid_moves = generate_moves(&chess.board);
 
         chess
     }
@@ -161,47 +162,134 @@ impl Chess {
             return ValidationResult::InvalidPosition;
         }
 
-        let piece = self.board[from_index].unwrap();
+        let piece = self.board[from_index];
+
+        if piece.is_none() {
+            return ValidationResult::InvalidPosition;
+        }
+
+        let piece = piece.unwrap();
+
         if piece.color != self.turn {
             return ValidationResult::InvalidTurn;
         }
 
         let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
 
-        println!("{:?}", valid_piece_moves);
+        //println!("{:?}", valid_piece_moves);
 
-        if valid_piece_moves.iter().any(|m| m.to == to) {
-            ValidationResult::Valid
-        } else {
-            ValidationResult::InvalidMove
-        }
-    }
-
-    pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
-        let validation_res = self.validate_move(from, to);
-        if validation_res != ValidationResult::Valid {
-            return validation_res;
+        if !valid_piece_moves.iter().any(|m| m.to == to) {
+            return ValidationResult::InvalidMove;
         }
 
-        let from_index = from.y * 8 + from.x;
-        let to_index = to.y * 8 + to.x;
+        let mut validate_board: [Option<Piece>; 64] = self.board;
 
-        let piece = self.board[from_index].unwrap();
-
-        self.board[to_index] = Some(Piece {
+        validate_board[to_index] = Some(Piece {
             piece_type: piece.piece_type,
             color: piece.color,
             position: to,
         });
-        self.board[from_index] = None;
+        validate_board[from_index] = None;
 
-        self.turn = match self.turn {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
+        let new_valid_moves = generate_moves(&validate_board);
 
-        self.valid_moves = generate_moves(self);
+        let is_check = self.check_check(&validate_board, &new_valid_moves);
 
-        ValidationResult::Valid
+        if is_check.is_some() {
+            let is_check = is_check.unwrap();
+            if is_check.contains(&self.turn) {
+                return ValidationResult::InvalidMove;
+            }
+            return ValidationResult::Valid(Status::Check);
+        }
+
+        ValidationResult::Valid(Status::Active)
+    }
+
+    pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
+        let validation_res = self.validate_move(from, to);
+        match validation_res {
+            ValidationResult::Valid(status) => {
+                let from_index = from.y * 8 + from.x;
+                let to_index = to.y * 8 + to.x;
+
+                let piece = self.board[from_index].unwrap();
+
+                self.board[to_index] = Some(Piece {
+                    piece_type: piece.piece_type,
+                    color: piece.color,
+                    position: to,
+                });
+                self.board[from_index] = None;
+
+                self.turn = match self.turn {
+                    Color::White => Color::Black,
+                    Color::Black => Color::White,
+                };
+
+                self.status = status;
+
+                self.valid_moves = generate_moves(&self.board);
+
+                ValidationResult::Valid(self.status)
+            }
+            _ => validation_res,
+        }
+    }
+
+    pub fn is_check(&self) -> Option<Color> {
+        let check_res = self.check_check(&self.board, &self.valid_moves);
+        if check_res.is_none() {
+            return None;
+        }
+
+        //self.board can't be in double check
+        Some(check_res.unwrap()[0])
+    }
+
+    fn check_check(&self, board: &Board, valid_moves: &ValidBoardMoves) -> Option<Vec<Color>> {
+        let colors = [Color::White, Color::Black];
+        let mut check_colors: Vec<Color> = Vec::new();
+        for color in colors.iter() {
+            let king = board.iter().find(|p| {
+                if let Some(p) = p {
+                    return p.piece_type == PieceType::King && p.color == *color;
+                }
+                false
+            });
+
+            if king.is_none() {
+                continue;
+            }
+
+            let king = king.unwrap().unwrap();
+
+            let mut is_check = false;
+
+            valid_moves.iter().for_each(|n| {
+                if n.is_none() {
+                    return;
+                }
+
+                if n.as_ref().unwrap().iter().any(|m| {
+                    if m.piece.color != king.color && m.to == king.position {
+                        return true;
+                    }
+
+                    false
+                }) {
+                    is_check = true;
+                }
+            });
+
+            if is_check {
+                check_colors.push(king.color);
+            }
+        }
+
+        if check_colors.is_empty() {
+            return None;
+        }
+        Some(check_colors)
     }
 }
