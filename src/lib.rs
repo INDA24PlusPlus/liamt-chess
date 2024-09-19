@@ -289,12 +289,7 @@ impl Chess {
     fn update(&mut self) {
         self.valid_moves = generate_moves(&self.board);
 
-        let next_turn = match self.turn {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
-
-        let validation_res = self.get_board_status(&self.board, &self.valid_moves, next_turn);
+        let validation_res = self.get_board_status(&self.board, &self.valid_moves, self.turn);
 
         self.status = match validation_res {
             ValidationResult::Valid(s) => s,
@@ -316,9 +311,13 @@ impl Chess {
     ) -> ValidationResult {
         let is_check = self.check_check(board, valid_moves);
 
-        let opponent_stuck = self.cant_move(board, valid_moves, turn);
+        let opposite_turn = match self.turn {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
 
-        println!("stuck: {:?}", opponent_stuck);
+        let im_stuck = self.cant_move(board, valid_moves, turn);
+        let opponent_stuck = self.cant_move(board, valid_moves, opposite_turn);
 
         if is_check.is_some() {
             let is_check = is_check.unwrap();
@@ -331,7 +330,7 @@ impl Chess {
             }
 
             return ValidationResult::Valid(Status::Check);
-        } else if opponent_stuck {
+        } else if im_stuck {
             return ValidationResult::Valid(Status::Stalemate);
         }
 

@@ -238,28 +238,37 @@ fn valid_moves_pawn(board: &Board, piece: Piece) -> Vec<Move> {
         || (piece.color == Color::Black && piece.position.y == 6)
     {
         let mov = convert_move(&piece, 0, 2);
+        if valid_position(mov.x, mov.y) {
+            let target_tile = board[(mov.y * 8 + mov.x) as usize];
+            if target_tile.is_none() {
+                moves.push(mov);
+            }
+        }
+    }
+
+    println!("{:?}", piece);
+    let mov = convert_move(&piece, 0, 1);
+    if valid_position(mov.x, mov.y) {
         let target_tile = board[(mov.y * 8 + mov.x) as usize];
         if target_tile.is_none() {
             moves.push(mov);
         }
     }
 
-    let mov = convert_move(&piece, 0, 1);
-    let target_tile = board[(mov.y * 8 + mov.x) as usize];
-    if target_tile.is_none() {
-        moves.push(mov);
-    }
-
     let mov = convert_move(&piece, 1, 1);
-    let target_tile = board[(mov.y * 8 + mov.x) as usize];
-    if target_tile.is_some_and(|p| p.color != piece.color) {
-        moves.push(mov);
+    if valid_position(mov.x, mov.y) {
+        let target_tile = board[(mov.y * 8 + mov.x) as usize];
+        if target_tile.is_some_and(|p| p.color != piece.color) {
+            moves.push(mov);
+        }
     }
 
     let mov = convert_move(&piece, -1, 1);
-    let target_tile = board[(mov.y * 8 + mov.x) as usize];
-    if target_tile.is_some_and(|p| p.color != piece.color) {
-        moves.push(mov);
+    if valid_position(mov.x, mov.y) {
+        let target_tile = board[(mov.y * 8 + mov.x) as usize];
+        if target_tile.is_some_and(|p| p.color != piece.color) {
+            moves.push(mov);
+        }
     }
 
     validate_possible_moves(board, piece, moves)

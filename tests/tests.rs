@@ -64,9 +64,9 @@ mod tests {
         assert_eq!(chess.status, Status::Checkmate);
     }
 
-    /* #[test]
+    #[test]
     fn check_checkmate_3() {
         let chess = Chess::from_fen("k7/8/8/8/8/8/8/QR6 w");
         assert_eq!(chess.status, Status::Checkmate);
-    } */
+    }
 }
