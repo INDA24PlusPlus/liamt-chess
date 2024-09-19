@@ -56,11 +56,12 @@ impl Position {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
     pub position: Position,
+    prev_positions: Vec<Position>,
 }
 
 pub type Board = [Option<Piece>; 64];
@@ -86,7 +87,8 @@ impl Chess {
     }
 
     pub fn parse_fen_board(board_str: &str) -> Board {
-        let mut board = [None; 64];
+        const ARRAY_REPEAT_VALUE: Option<Piece> = None;
+        let mut board = [ARRAY_REPEAT_VALUE; 64];
         let mut row = 7;
         let mut col = 0;
 
@@ -123,6 +125,7 @@ impl Chess {
                         piece_type,
                         color,
                         position: Position { x: col, y: row },
+                        prev_positions: Vec::new(),
                     });
                     col += 1;
                 }
@@ -166,13 +169,13 @@ impl Chess {
             return ValidationResult::InvalidPosition;
         }
 
-        let piece = self.board[from_index];
+        let piece = &self.board[from_index];
 
         if piece.is_none() {
             return ValidationResult::InvalidPosition;
         }
 
-        let piece = piece.unwrap();
+        let piece = piece.as_ref().unwrap();
 
         if piece.color != self.turn {
             return ValidationResult::InvalidTurn;
@@ -184,13 +187,18 @@ impl Chess {
             return ValidationResult::InvalidMove;
         }
 
-        let mut validate_board: [Option<Piece>; 64] = self.board;
+        let mut validate_board: [Option<Piece>; 64] = self.board.clone();
+
+        let mut prev_positions = piece.prev_positions.clone();
+        prev_positions.push(piece.position);
 
         validate_board[to_index] = Some(Piece {
             piece_type: piece.piece_type,
             color: piece.color,
             position: to,
+            prev_positions,
         });
+
         validate_board[from_index] = None;
 
         let new_valid_moves = generate_moves(&validate_board);
@@ -219,14 +227,15 @@ impl Chess {
                 let from_index = m.piece.position.y * 8 + m.piece.position.x;
                 let to_index = m.to.y * 8 + m.to.x;
 
-                let piece = board[from_index].unwrap();
+                let piece = board[from_index].clone().unwrap();
 
-                let mut validate_board: [Option<Piece>; 64] = *board;
+                let mut validate_board: [Option<Piece>; 64] = board.clone();
 
                 validate_board[to_index] = Some(Piece {
                     piece_type: piece.piece_type,
                     color: piece.color,
                     position: m.to,
+                    prev_positions: piece.prev_positions.clone(),
                 });
                 validate_board[from_index] = None;
 
@@ -250,14 +259,20 @@ impl Chess {
                 let from_index = from.y * 8 + from.x;
                 let to_index = to.y * 8 + to.x;
 
-                let piece = self.board[from_index].unwrap();
+                let piece = &self.board[from_index];
+                let piece = piece.as_ref().unwrap();
 
                 self.board[to_index] = Some(Piece {
                     piece_type: piece.piece_type,
                     color: piece.color,
                     position: to,
+                    prev_positions: piece.prev_positions.clone(),
                 });
                 self.board[from_index] = None;
+
+                /* if piece.piece_type == PieceType::Pawn && (to.y - from.y).abs() == 2 {
+                    self.en_passant_target = self.board[to_index];
+                } */
 
                 if status == Status::Checkmate {
                     self.winner = Some(self.turn);
@@ -355,7 +370,7 @@ impl Chess {
             _ => {}
         }
 
-        let piece = self.awaiting_promotion_piece.unwrap();
+        let piece = self.awaiting_promotion_piece.clone().unwrap();
 
         let index = piece.position.y * 8 + piece.position.x;
 
@@ -363,6 +378,7 @@ impl Chess {
             piece_type,
             color: piece.color,
             position: piece.position,
+            prev_positions: piece.prev_positions.clone(),
         });
 
         self.awaiting_promotion_piece = None;
@@ -389,7 +405,7 @@ impl Chess {
                 continue;
             }
 
-            let king = king.unwrap().unwrap();
+            let king = king.unwrap().as_ref().unwrap();
 
             let mut is_check = false;
 
@@ -422,7 +438,7 @@ impl Chess {
 
     fn check_for_promotion(&self) -> Option<Piece> {
         if self.awaiting_promotion_piece.is_some() {
-            return self.awaiting_promotion_piece;
+            return self.awaiting_promotion_piece.clone();
         }
 
         for piece in self.board.iter().flatten() {
@@ -430,7 +446,7 @@ impl Chess {
                 && ((piece.color == Color::White && piece.position.y == 7)
                     || (piece.color == Color::Black && piece.position.y == 0))
             {
-                return Some(*piece);
+                return Some(piece.clone());
             }
         }
 
