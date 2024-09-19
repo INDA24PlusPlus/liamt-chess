@@ -21,11 +21,18 @@ impl std::ops::Not for Color {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DrawType {
+    Stalemate,
+    FiftyMoveRule,
+    ThreefoldRepetition,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Status {
     Chilling,
     Check(Color),
     Checkmate(Color),
-    Stalemate,
+    Draw(DrawType),
     AwaitingPromotion,
 }
 
@@ -45,6 +52,12 @@ pub enum PieceType {
     Bishop,
     Knight,
     Pawn,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CastlingType {
+    KingSide(Color),
+    QueenSide(Color),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -84,6 +97,7 @@ pub struct Chess {
     pub winner: Option<Color>,
     pub awaiting_promotion_piece: Option<Piece>,
     valid_moves: ValidBoardMoves,
+    counter_50_move_rule: u8,
 }
 
 impl Default for Chess {
@@ -189,6 +203,7 @@ impl Chess {
             status: Status::Chilling,
             valid_moves: std::array::from_fn(|_| None),
             awaiting_promotion_piece: None,
+            counter_50_move_rule: 0,
         };
         chess.update();
 
@@ -298,11 +313,12 @@ impl Chess {
                 let from_index = from.y * 8 + from.x;
                 let to_index = to.y * 8 + to.x;
 
-                let piece = &self.board[from_index];
-                let piece = piece.as_ref().unwrap();
+                let piece = self.board[from_index].as_ref().unwrap().clone();
 
                 let mut prev_positions = piece.prev_positions.clone();
                 prev_positions.push(piece.position);
+
+                let capture = self.board[to_index].is_some();
 
                 self.board[to_index] = Some(Piece {
                     piece_type: piece.piece_type,
@@ -312,13 +328,20 @@ impl Chess {
                 });
                 self.board[from_index] = None;
 
-                /* if piece.piece_type == PieceType::Pawn && (to.y - from.y).abs() == 2 {
-                    self.en_passant_target = self.board[to_index];
-                } */
+                if piece.piece_type == PieceType::Pawn || capture {
+                    self.counter_50_move_rule = 0;
+                } else {
+                    self.counter_50_move_rule += 1;
+                }
+
+                if self.counter_50_move_rule >= 100 {
+                    self.status = Status::Draw(DrawType::FiftyMoveRule);
+                    return ValidationResult::Valid(self.status);
+                }
 
                 if let Status::Checkmate(color) = status {
                     self.winner = Some(!color);
-                } else if status == Status::Stalemate {
+                } else if status == Status::Draw(DrawType::Stalemate) {
                     self.winner = None;
                 }
 
@@ -385,7 +408,7 @@ impl Chess {
 
             return Status::Check(!turn);
         } else if im_stuck {
-            return Status::Stalemate;
+            return Status::Draw(DrawType::Stalemate);
         }
 
         Status::Chilling
@@ -492,5 +515,166 @@ impl Chess {
         }
 
         None
+    }
+
+    pub fn check_castling_possible(&self, castling_type: CastlingType) -> bool {
+        if self.status != Status::Chilling {
+            return false;
+        }
+
+        let (side, row) = match castling_type {
+            CastlingType::QueenSide(c) => (0, if c == Color::White { 0 } else { 7 }),
+            CastlingType::KingSide(c) => (1, if c == Color::White { 0 } else { 7 }),
+        };
+
+        if (row == 0 && self.turn == Color::Black) || (row == 7 && self.turn == Color::White) {
+            return false;
+        }
+
+        let king_index = row * 8 + 4;
+        let rook_index = row * 8 + (7 * side);
+
+        let king = &self.board[king_index];
+        let rook = &self.board[rook_index];
+
+        if king.is_none() || rook.is_none() {
+            return false;
+        }
+
+        let king = king.as_ref().unwrap();
+        let rook = rook.as_ref().unwrap();
+
+        if !rook.prev_positions.is_empty() || !rook.prev_positions.is_empty() {
+            return false;
+        }
+
+        let mut x = king.position.x as i8;
+        let y = king.position.y as i8;
+
+        let tiles_to_check = if side == 0 { 3 } else { 2 };
+
+        for _ in 0..tiles_to_check {
+            x += if side == 0 { -1 } else { 1 };
+            let tile = &self.board[(y * 8 + x) as usize];
+            if tile.is_some() {
+                return false;
+            }
+        }
+
+        let mut validate_board: [Option<Piece>; 64] = self.board.clone();
+
+        let king_to = Position {
+            x: ((king.position.x as i8) + (if side == 0 { -2 } else { 2 })) as usize,
+            y: king.position.y,
+        };
+        let rook_to = Position {
+            x: ((rook.position.x as i8) + (if side == 0 { 3 } else { -2 })) as usize,
+            y: rook.position.y,
+        };
+        let king_to_index = king_to.y * 8 + king_to.x;
+        let rook_to_index = rook_to.y * 8 + rook_to.x;
+        let king_from_index = king.position.y * 8 + king.position.x;
+        let rook_from_index = rook.position.y * 8 + rook.position.x;
+
+        let mut king_prev_positions = king.prev_positions.clone();
+        king_prev_positions.push(king.position);
+
+        let mut rook_prev_positions = rook.prev_positions.clone();
+        rook_prev_positions.push(rook.position);
+
+        validate_board[king_to_index] = Some(Piece {
+            piece_type: king.piece_type,
+            color: king.color,
+            position: king_to,
+            prev_positions: king_prev_positions,
+        });
+
+        validate_board[king_from_index] = None;
+
+        validate_board[rook_to_index] = Some(Piece {
+            piece_type: rook.piece_type,
+            color: rook.color,
+            position: rook_to,
+            prev_positions: rook_prev_positions,
+        });
+
+        validate_board[rook_from_index] = None;
+
+        let new_valid_moves = generate_moves(&validate_board);
+
+        let new_status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
+
+        println!("{:?}", new_status);
+
+        match new_status {
+            Status::Check(c) => c != self.turn,
+            Status::Checkmate(c) => c != self.turn,
+            Status::Draw(_) => false,
+            _ => true,
+        }
+    }
+
+    pub fn perform_castling(&mut self, castling_type: CastlingType) -> ValidationResult {
+        let possible = self.check_castling_possible(castling_type);
+
+        if !possible {
+            return ValidationResult::InvalidMove;
+        }
+
+        let (side, row) = match castling_type {
+            CastlingType::QueenSide(c) => (0, if c == Color::White { 0 } else { 7 }),
+            CastlingType::KingSide(c) => (1, if c == Color::White { 0 } else { 7 }),
+        };
+
+        let king_index = row * 8 + 4;
+        let rook_index = row * 8 + (7 * side);
+
+        let king = self.board[king_index].as_ref().unwrap().clone();
+        let rook = self.board[rook_index].as_ref().unwrap().clone();
+
+        let king_to = Position {
+            x: ((king.position.x as i8) + (if side == 0 { -2 } else { 2 })) as usize,
+            y: king.position.y,
+        };
+        let rook_to = Position {
+            x: ((rook.position.x as i8) + (if side == 0 { 3 } else { -2 })) as usize,
+            y: rook.position.y,
+        };
+        let king_to_index = king_to.y * 8 + king_to.x;
+        let rook_to_index = rook_to.y * 8 + rook_to.x;
+        let king_from_index = king.position.y * 8 + king.position.x;
+        let rook_from_index = rook.position.y * 8 + rook.position.x;
+
+        let mut king_prev_positions = king.prev_positions.clone();
+        king_prev_positions.push(king.position);
+
+        let mut rook_prev_positions = rook.prev_positions.clone();
+        rook_prev_positions.push(rook.position);
+
+        self.board[king_to_index] = Some(Piece {
+            piece_type: king.piece_type,
+            color: king.color,
+            position: king_to,
+            prev_positions: king_prev_positions,
+        });
+
+        self.board[king_from_index] = None;
+
+        self.board[rook_to_index] = Some(Piece {
+            piece_type: rook.piece_type,
+            color: rook.color,
+            position: rook_to,
+            prev_positions: rook_prev_positions,
+        });
+
+        self.board[rook_from_index] = None;
+
+        self.status = Status::Chilling;
+
+        self.turn = !self.turn;
+
+        self.update();
+
+        ValidationResult::Valid(self.status)
     }
 }
