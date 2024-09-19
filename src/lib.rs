@@ -90,6 +90,44 @@ pub struct Piece {
 
 pub type Board = [Option<Piece>; 64];
 
+fn hash_board(board: &Board) -> String {
+    let mut hash = String::new();
+    for i in 0..64 {
+        if let Some(piece) = &board[i] {
+            let piece_hash = match piece.piece_type {
+                PieceType::King => match piece.color {
+                    Color::White => "1 ",
+                    Color::Black => "2 ",
+                },
+                PieceType::Queen => match piece.color {
+                    Color::White => "3 ",
+                    Color::Black => "4 ",
+                },
+                PieceType::Rook => match piece.color {
+                    Color::White => "5 ",
+                    Color::Black => "6 ",
+                },
+                PieceType::Bishop => match piece.color {
+                    Color::White => "7 ",
+                    Color::Black => "8 ",
+                },
+                PieceType::Knight => match piece.color {
+                    Color::White => "9 ",
+                    Color::Black => "10 ",
+                },
+                PieceType::Pawn => match piece.color {
+                    Color::White => "11 ",
+                    Color::Black => "12 ",
+                },
+            };
+            hash.push_str(piece_hash);
+
+            hash.push_str(&format!("{} ", piece.position.to_str()));
+        }
+    }
+    hash
+}
+
 pub struct Chess {
     pub board: Board,
     pub turn: Color,
@@ -98,6 +136,7 @@ pub struct Chess {
     pub awaiting_promotion_piece: Option<Piece>,
     valid_moves: ValidBoardMoves,
     counter_50_move_rule: u8,
+    prev_boards: std::collections::HashMap<String, u8>,
 }
 
 impl Default for Chess {
@@ -204,8 +243,11 @@ impl Chess {
             valid_moves: std::array::from_fn(|_| None),
             awaiting_promotion_piece: None,
             counter_50_move_rule: 0,
+            prev_boards: std::collections::HashMap::new(),
         };
         chess.update();
+
+        chess.threefold_rule();
 
         Ok(chess)
     }
@@ -334,6 +376,8 @@ impl Chess {
                     self.counter_50_move_rule += 1;
                 }
 
+                println!("{:?}", self.counter_50_move_rule);
+
                 if self.counter_50_move_rule >= 100 {
                     self.status = Status::Draw(DrawType::FiftyMoveRule);
                     return ValidationResult::Valid(self.status);
@@ -344,8 +388,9 @@ impl Chess {
                 } else if status == Status::Draw(DrawType::Stalemate) {
                     self.winner = None;
                 }
-
                 self.status = status;
+
+                self.threefold_rule();
 
                 self.valid_moves = generate_moves(&self.board);
 
@@ -448,6 +493,8 @@ impl Chess {
         self.status = Status::Chilling;
 
         self.turn = !self.turn;
+
+        self.threefold_rule();
 
         self.update();
 
@@ -675,6 +722,21 @@ impl Chess {
 
         self.update();
 
+        ValidationResult::Valid(self.status)
+    }
+
+    pub fn threefold_rule(&mut self) -> ValidationResult {
+        let hash = hash_board(&self.board);
+
+        let entry = self.prev_boards.entry(hash.clone()).or_insert(0);
+        *entry += 1;
+
+        let count = self.prev_boards.get(&hash);
+
+        if count.is_some_and(|c| *c >= 3) {
+            self.status = Status::Draw(DrawType::ThreefoldRepetition);
+            return ValidationResult::Valid(self.status);
+        }
         ValidationResult::Valid(self.status)
     }
 }

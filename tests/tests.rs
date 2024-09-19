@@ -132,4 +132,61 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn check_three_fold_repetition() {
+        let mut chess = Chess::from_fen("k7/8/8/8/8/8/8/K7 w").unwrap();
+        chess.move_piece(Position::from_str("a1"), Position::from_str("a2"));
+        chess.move_piece(Position::from_str("a8"), Position::from_str("a7"));
+        chess.move_piece(Position::from_str("a2"), Position::from_str("a1"));
+        chess.move_piece(Position::from_str("a7"), Position::from_str("a8"));
+        chess.move_piece(Position::from_str("a1"), Position::from_str("a2"));
+        chess.move_piece(Position::from_str("a8"), Position::from_str("a7"));
+        chess.move_piece(Position::from_str("a2"), Position::from_str("a1"));
+
+        assert_eq!(chess.status, Status::Chilling);
+
+        chess.move_piece(Position::from_str("a7"), Position::from_str("a8"));
+
+        assert_eq!(chess.status, Status::Draw(DrawType::ThreefoldRepetition));
+    }
+
+    #[test]
+    fn check_50_move_rule() {
+        let mut chess = Chess::from_fen("rrrrrrrr/8/8/8/8/8/8/RRRRRRRR w").unwrap();
+        for i in 0..3 {
+            for j in 0..8 {
+                println!("{}, {}", i, j);
+                chess.move_piece(Position { x: j, y: i }, Position { x: j, y: i + 1 });
+                chess.move_piece(
+                    Position { x: j, y: 7 - i },
+                    Position {
+                        x: j,
+                        y: 7 - (i + 1),
+                    },
+                );
+            }
+        }
+
+        for i in (1..4).rev() {
+            for j in 0..8 {
+                println!("{}, {}", i, j);
+                chess.move_piece(Position { x: j, y: i }, Position { x: j, y: i - 1 });
+                chess.move_piece(
+                    Position { x: j, y: 7 - i },
+                    Position {
+                        x: j,
+                        y: 7 - (i - 1),
+                    },
+                );
+            }
+        }
+
+        for i in 0..2 {
+            chess.move_piece(Position { x: i, y: 0 }, Position { x: i, y: 1 });
+            chess.move_piece(Position { x: i, y: 7 }, Position { x: i, y: 6 });
+        }
+
+        assert_eq!(chess.status, Status::Draw(DrawType::FiftyMoveRule));
+    }
 }
