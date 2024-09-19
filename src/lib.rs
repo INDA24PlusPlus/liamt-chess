@@ -1,5 +1,5 @@
 pub mod moves;
-use moves::{generate_moves, Move, ValidBoardMoves};
+use moves::{generate_moves, ValidBoardMoves};
 
 const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -9,11 +9,22 @@ pub enum Color {
     White = 1,
 }
 
+impl std::ops::Not for Color {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Color::Black => Color::White,
+            Color::White => Color::Black,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Status {
     Chilling,
-    Check,
-    Checkmate,
+    Check(Color),
+    Checkmate(Color),
     Stalemate,
     AwaitingPromotion,
 }
@@ -83,10 +94,10 @@ impl Default for Chess {
 
 impl Chess {
     pub fn new() -> Self {
-        Chess::from_fen(STARTING_FEN)
+        Chess::from_fen(STARTING_FEN).unwrap()
     }
 
-    pub fn parse_fen_board(board_str: &str) -> Board {
+    pub fn parse_fen_board(board_str: &str) -> Option<Board> {
         const ARRAY_REPEAT_VALUE: Option<Piece> = None;
         let mut board = [ARRAY_REPEAT_VALUE; 64];
         let mut row = 7;
@@ -95,13 +106,21 @@ impl Chess {
         for c in board_str.chars() {
             match c {
                 '/' => {
+                    if row == 0 {
+                        return None;
+                    }
+
                     row -= 1;
                     col = 0;
                 }
                 '1'..='8' => {
                     let n = c.to_digit(10).unwrap() as usize;
                     for _ in 0..n {
-                        board[row * 8 + col] = None;
+                        let index = row * 8 + col;
+                        if index >= 64 {
+                            return None;
+                        }
+                        board[index] = None;
                     }
                     col += n;
                 }
@@ -118,10 +137,15 @@ impl Chess {
                         'b' => PieceType::Bishop,
                         'n' => PieceType::Knight,
                         'p' => PieceType::Pawn,
-                        _ => panic!("Invalid piece type"),
+                        _ => return None,
                     };
 
-                    board[row * 8 + col] = Some(Piece {
+                    let index = row * 8 + col;
+                    if index >= 64 {
+                        return None;
+                    }
+
+                    board[index] = Some(Piece {
                         piece_type,
                         color,
                         position: Position { x: col, y: row },
@@ -132,20 +156,34 @@ impl Chess {
             }
         }
 
-        board
+        Some(board)
     }
 
-    pub fn from_fen(fen: &str) -> Self {
+    pub fn from_fen(fen: &str) -> Result<Self, &str> {
         let mut parts = fen.split_whitespace();
-        let board = Chess::parse_fen_board(parts.next().unwrap());
-        let turn = match parts.next().unwrap() {
+
+        let board_str = parts.next();
+        if board_str.is_none() {
+            return Err("No board");
+        }
+        let board = Chess::parse_fen_board(board_str.unwrap());
+
+        if board.is_none() {
+            return Err("Invalid board");
+        }
+
+        let turn_str = parts.next();
+        if turn_str.is_none() {
+            return Err("No turn");
+        }
+        let turn = match turn_str.unwrap() {
             "w" => Color::White,
             "b" => Color::Black,
-            _ => panic!("Invalid turn"),
+            _ => return Err("Invalid turn"),
         };
 
         let mut chess = Self {
-            board,
+            board: board.unwrap(),
             turn,
             winner: None,
             status: Status::Chilling,
@@ -154,11 +192,11 @@ impl Chess {
         };
         chess.update();
 
-        chess
+        Ok(chess)
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
-        if self.status != Status::Chilling && self.status != Status::Check {
+        if self.status != Status::Chilling && !matches!(self.status, Status::Check(_)) {
             return ValidationResult::InvalidTurn;
         }
 
@@ -203,12 +241,9 @@ impl Chess {
 
         let new_valid_moves = generate_moves(&validate_board);
 
-        let next_turn = match self.turn {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
+        let next_turn = !self.turn;
 
-        self.get_board_status(&validate_board, &new_valid_moves, next_turn)
+        ValidationResult::Valid(self.get_board_status(&validate_board, &new_valid_moves, next_turn))
     }
 
     fn cant_move(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
@@ -256,6 +291,10 @@ impl Chess {
         let validation_res = self.validate_move(from, to);
         match validation_res {
             ValidationResult::Valid(status) => {
+                if validation_res == ValidationResult::Valid(Status::Check(self.turn)) {
+                    return ValidationResult::InvalidMove;
+                }
+
                 let from_index = from.y * 8 + from.x;
                 let to_index = to.y * 8 + to.x;
 
@@ -274,16 +313,11 @@ impl Chess {
                     self.en_passant_target = self.board[to_index];
                 } */
 
-                if status == Status::Checkmate {
-                    self.winner = Some(self.turn);
+                if let Status::Checkmate(color) = status {
+                    self.winner = Some(!color);
                 } else if status == Status::Stalemate {
                     self.winner = None;
                 }
-
-                self.turn = match self.turn {
-                    Color::White => Color::Black,
-                    Color::Black => Color::White,
-                };
 
                 self.status = status;
 
@@ -293,6 +327,9 @@ impl Chess {
 
                 if self.awaiting_promotion_piece.is_some() {
                     self.status = Status::AwaitingPromotion;
+                } else {
+                    // Switch turn if no promotion
+                    self.turn = !self.turn;
                 }
 
                 ValidationResult::Valid(self.status)
@@ -306,10 +343,7 @@ impl Chess {
 
         let validation_res = self.get_board_status(&self.board, &self.valid_moves, self.turn);
 
-        self.status = match validation_res {
-            ValidationResult::Valid(s) => s,
-            _ => self.status,
-        };
+        self.status = validation_res;
 
         self.awaiting_promotion_piece = self.check_for_promotion();
 
@@ -323,33 +357,35 @@ impl Chess {
         board: &Board,
         valid_moves: &ValidBoardMoves,
         turn: Color,
-    ) -> ValidationResult {
+    ) -> Status {
         let is_check = self.check_check(board, valid_moves);
 
-        let opposite_turn = match self.turn {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
-
         let im_stuck = self.cant_move(board, valid_moves, turn);
-        let opponent_stuck = self.cant_move(board, valid_moves, opposite_turn);
+        let opponent_stuck = self.cant_move(board, valid_moves, !turn);
 
         if is_check.is_some() {
             let is_check = is_check.unwrap();
-            if is_check.contains(&self.turn) {
-                return ValidationResult::InvalidMove;
+
+            // If the player is in check and can't move
+            if im_stuck && is_check.contains(&turn) {
+                return Status::Checkmate(turn);
             }
 
-            if opponent_stuck {
-                return ValidationResult::Valid(Status::Checkmate);
+            // If the opponent is in check and its player's turn
+            if opponent_stuck && is_check.contains(&!turn) {
+                return Status::Checkmate(!turn);
             }
 
-            return ValidationResult::Valid(Status::Check);
+            if is_check.contains(&turn) {
+                return Status::Check(turn);
+            }
+
+            return Status::Check(!turn);
         } else if im_stuck {
-            return ValidationResult::Valid(Status::Stalemate);
+            return Status::Stalemate;
         }
 
-        ValidationResult::Valid(Status::Chilling)
+        Status::Chilling
     }
 
     pub fn is_check(&self) -> Option<Color> {
@@ -360,13 +396,13 @@ impl Chess {
         }
     }
 
-    pub fn promote_piece(&mut self, piece_type: PieceType) -> bool {
+    pub fn promote_piece(&mut self, piece_type: PieceType) -> Option<Status> {
         if self.status != Status::AwaitingPromotion || self.awaiting_promotion_piece.is_none() {
-            return false;
+            return None;
         }
 
         match piece_type {
-            PieceType::King | PieceType::Pawn => return false,
+            PieceType::King | PieceType::Pawn => return None,
             _ => {}
         }
 
@@ -385,9 +421,11 @@ impl Chess {
 
         self.status = Status::Chilling;
 
+        self.turn = !self.turn;
+
         self.update();
 
-        true
+        Some(self.status)
     }
 
     fn check_check(&self, board: &Board, valid_moves: &ValidBoardMoves) -> Option<Vec<Color>> {

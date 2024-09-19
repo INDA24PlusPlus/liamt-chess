@@ -23,50 +23,55 @@ mod tests {
     }
 
     #[test]
-    fn check_check() {
-        let mut chess = Chess::from_fen("k7/8/8/8/8/8/8/1R6 w");
-        chess.move_piece(Position::from_str("b1"), Position::from_str("a1"));
-        assert_eq!(chess.status, Status::Check);
+    fn check_invalid_fen() {
+        assert!(Chess::from_fen("k7/8/8/8/8/8/8/1R6").is_err()); // missing turn
+        assert!(Chess::from_fen("k7/8/8/8/8/8/8/1R6 a").is_err()); // invalid turn
+        assert!(Chess::from_fen("k7/8/8/8/8/8/8/8/8 w").is_err()); // too many rows
+        assert!(Chess::from_fen("k7/8/8/8/8/8/8/9 w").is_err()); // too many columns
     }
 
     #[test]
-    fn check_check_2() {
-        let mut chess = Chess::from_fen("7k/8/7N/8/8/8/8/8 w");
+    fn check_check() {
+        let mut chess = Chess::from_fen("k7/8/8/8/8/8/8/1R6 w").unwrap();
+        chess.move_piece(Position::from_str("b1"), Position::from_str("a1"));
+        assert_eq!(chess.status, Status::Check(Color::Black));
+
+        let mut chess = Chess::from_fen("7k/8/7N/8/8/8/8/8 w").unwrap();
         chess.move_piece(Position::from_str("h6"), Position::from_str("f7"));
-        assert_eq!(chess.status, Status::Check);
+        assert_eq!(chess.status, Status::Check(Color::Black));
     }
 
     #[test]
     fn check_stalemate() {
-        let mut chess = Chess::from_fen("k7/8/2Q5/8/8/8/8/K7 w");
+        let mut chess = Chess::from_fen("k7/8/2Q5/8/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("c6"), Position::from_str("b6"));
         assert_eq!(chess.status, Status::Stalemate);
-    }
 
-    #[test]
-    fn check_stalemate_2() {
-        let mut chess = Chess::from_fen("1B6/8/8/3k4/8/B7/8/2R1R3 w");
+        let mut chess = Chess::from_fen("1B6/8/8/3k4/8/B7/8/2R1R3 w").unwrap();
         chess.move_piece(Position::from_str("a3"), Position::from_str("b2"));
         assert_eq!(chess.status, Status::Stalemate);
     }
 
     #[test]
     fn check_checkmate() {
-        let mut chess = Chess::from_fen("k7/7R/2Q5/8/8/8/8/K7 w");
+        let mut chess = Chess::from_fen("k7/7R/2Q5/8/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("c6"), Position::from_str("b7"));
-        assert_eq!(chess.status, Status::Checkmate);
-    }
+        assert_eq!(chess.status, Status::Checkmate(Color::Black));
 
-    #[test]
-    fn check_checkmate_2() {
-        let mut chess = Chess::from_fen("k7/2QN3R/1P6/1N6/8/8/8/K7 w");
+        let mut chess = Chess::from_fen("k7/2QN3R/1P6/1N6/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("b6"), Position::from_str("b7"));
-        assert_eq!(chess.status, Status::Checkmate);
+        assert_eq!(chess.status, Status::Checkmate(Color::Black));
+
+        let chess = Chess::from_fen("k7/8/8/8/8/8/8/QR6 w").unwrap();
+        assert_eq!(chess.status, Status::Checkmate(Color::Black));
     }
 
     #[test]
-    fn check_checkmate_3() {
-        let chess = Chess::from_fen("k7/8/8/8/8/8/8/QR6 w");
-        assert_eq!(chess.status, Status::Checkmate);
+    fn check_promotion() {
+        let mut chess = Chess::from_fen("7k/P7/8/8/8/8/8/P6K w").unwrap();
+        chess.move_piece(Position::from_str("a7"), Position::from_str("a8"));
+        assert_eq!(chess.status, Status::AwaitingPromotion);
+        chess.promote_piece(PieceType::Queen);
+        assert_eq!(chess.status, Status::Check(Color::Black));
     }
 }
