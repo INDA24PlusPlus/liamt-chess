@@ -74,4 +74,14 @@ mod tests {
         chess.promote_piece(PieceType::Queen);
         assert_eq!(chess.status, Status::Check(Color::Black));
     }
+
+    #[test]
+    fn check_en_passant() {
+        let mut chess = Chess::from_fen("k7/2p5/8/3P4/8/8/8/K7 b").unwrap();
+        chess.move_piece(Position::from_str("c7"), Position::from_str("c5"));
+        println!("NOW");
+        let res = chess.move_piece(Position::from_str("d5"), Position::from_str("c6"));
+        println!("{:?}", res);
+        assert!(matches!(res, ValidationResult::Valid(_)));
+    }
 }

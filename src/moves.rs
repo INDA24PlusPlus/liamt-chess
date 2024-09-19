@@ -171,9 +171,9 @@ fn valid_moves_king(board: &Board, piece: &Piece) -> Vec<Move> {
         (-1, -1),
     ];
 
-    let possible_moves = relative_to_absolute_moves(&piece, moves);
+    let possible_moves = relative_to_absolute_moves(piece, moves);
 
-    validate_possible_moves(board, &piece, possible_moves)
+    validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_queen(board: &Board, piece: &Piece) -> Vec<Move> {
     let directions = vec![
@@ -189,21 +189,21 @@ fn valid_moves_queen(board: &Board, piece: &Piece) -> Vec<Move> {
 
     let possible_moves = generate_directional_possible_moves(piece.position, directions);
 
-    validate_possible_moves(board, &piece, possible_moves)
+    validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_rook(board: &Board, piece: &Piece) -> Vec<Move> {
     let directions = vec![(1, 0), (0, 1), (-1, 0), (0, -1)];
 
     let possible_moves = generate_directional_possible_moves(piece.position, directions);
 
-    validate_possible_moves(board, &piece, possible_moves)
+    validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_bishop(board: &Board, piece: &Piece) -> Vec<Move> {
     let directions = vec![(1, 1), (-1, 1), (1, -1), (-1, -1)];
 
     let possible_moves = generate_directional_possible_moves(piece.position, directions);
 
-    validate_possible_moves(board, &piece, possible_moves)
+    validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_knight(board: &Board, piece: &Piece) -> Vec<Move> {
     let moves = vec![
@@ -219,7 +219,7 @@ fn valid_moves_knight(board: &Board, piece: &Piece) -> Vec<Move> {
 
     let possible_moves = relative_to_absolute_moves(piece, moves);
 
-    validate_possible_moves(board, &piece, possible_moves)
+    validate_possible_moves(board, piece, possible_moves)
 }
 fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
     let mut moves = Vec::new();
@@ -235,7 +235,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
     if (piece.color == Color::White && piece.position.y == 1)
         || (piece.color == Color::Black && piece.position.y == 6)
     {
-        let mov = convert_move(&piece, 0, 2);
+        let mov = convert_move(piece, 0, 2);
         if valid_position(mov.x, mov.y) {
             let target_tile = &board[(mov.y * 8 + mov.x) as usize];
             if target_tile.is_none() {
@@ -244,7 +244,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
         }
     }
 
-    let mov = convert_move(&piece, 0, 1);
+    let mov = convert_move(piece, 0, 1);
     if valid_position(mov.x, mov.y) {
         let target_tile = &board[(mov.y * 8 + mov.x) as usize];
         if target_tile.is_none() {
@@ -252,7 +252,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
         }
     }
 
-    let mov = convert_move(&piece, 1, 1);
+    let mov = convert_move(piece, 1, 1);
     if valid_position(mov.x, mov.y) {
         let target_tile = &board[(mov.y * 8 + mov.x) as usize];
         if target_tile.as_ref().is_some_and(|p| p.color != piece.color) {
@@ -260,7 +260,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
         }
     }
 
-    let mov = convert_move(&piece, -1, 1);
+    let mov = convert_move(piece, -1, 1);
     if valid_position(mov.x, mov.y) {
         let target_tile = &board[(mov.y * 8 + mov.x) as usize];
         if target_tile.as_ref().is_some_and(|p| p.color != piece.color) {
@@ -268,8 +268,8 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
         }
     }
 
-    let left = convert_move(&piece, -1, 0);
-    let right = convert_move(&piece, 1, 0);
+    let left = convert_move(piece, -1, 0);
+    let right = convert_move(piece, 1, 0);
 
     if valid_position(left.x, left.y) {
         let left_tile = &board[(left.y * 8 + left.x) as usize];
@@ -279,7 +279,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
                 && p.prev_positions.len() == 1
                 && ((p.prev_positions[0].y as i8) - (p.position.y as i8)).abs() == 2
         }) {
-            let left_up = convert_move(&piece, -1, 1);
+            let left_up = convert_move(piece, -1, 1);
             if valid_position(left_up.x, left_up.y) {
                 let target_tile = &board[(left_up.y * 8 + left_up.x) as usize];
                 if target_tile.is_none() {
@@ -297,7 +297,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
                 && p.prev_positions.len() == 1
                 && ((p.prev_positions[0].y as i8) - (p.position.y as i8)).abs() == 2
         }) {
-            let right_up = convert_move(&piece, 1, 1);
+            let right_up = convert_move(piece, 1, 1);
             if valid_position(right_up.x, right_up.y) {
                 let target_tile = &board[(right_up.y * 8 + right_up.x) as usize];
                 if target_tile.is_none() {
@@ -307,5 +307,5 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
         }
     }
 
-    validate_possible_moves(board, &piece, moves)
+    validate_possible_moves(board, piece, moves)
 }

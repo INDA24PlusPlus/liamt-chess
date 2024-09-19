@@ -301,11 +301,14 @@ impl Chess {
                 let piece = &self.board[from_index];
                 let piece = piece.as_ref().unwrap();
 
+                let mut prev_positions = piece.prev_positions.clone();
+                prev_positions.push(piece.position);
+
                 self.board[to_index] = Some(Piece {
                     piece_type: piece.piece_type,
                     color: piece.color,
                     position: to,
-                    prev_positions: piece.prev_positions.clone(),
+                    prev_positions,
                 });
                 self.board[from_index] = None;
 
