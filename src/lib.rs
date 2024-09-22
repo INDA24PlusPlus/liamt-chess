@@ -61,6 +61,14 @@ pub enum CastlingType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MoveType {
+    Normal,
+    Castling,
+    Promotion,
+    EnPassant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -252,6 +260,60 @@ impl Chess {
         Ok(chess)
     }
 
+    fn get_move_type(&self, from: Position, to: Position) -> MoveType {
+        let from_index = from.y * 8 + from.x;
+
+        let piece = self.board[from_index].as_ref().unwrap();
+
+        let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
+
+        let mov = valid_piece_moves.iter().find(|m| m.to == to).unwrap();
+
+        if mov.piece.piece_type == PieceType::Pawn
+            && ((to.y == 0 && piece.color == Color::White)
+                || (to.y == 7 && piece.color == Color::Black))
+        {
+            return MoveType::Promotion;
+        }
+
+        if piece.piece_type == PieceType::King && (from.x as i8 - to.x as i8).abs() == 2 {
+            return MoveType::Castling;
+        }
+
+        if mov.piece.piece_type == PieceType::Pawn
+            && (from.x as i8 - to.x as i8).abs() == 1
+            && self.board[to.y * 8 + to.x].is_none()
+        {
+            return MoveType::EnPassant;
+        }
+
+        MoveType::Normal
+    }
+
+    fn move_piece_on_board(&self, board: &Board, from: Position, to: Position) -> (Board, bool) {
+        let from_index = from.y * 8 + from.x;
+        let to_index = to.y * 8 + to.x;
+
+        let piece = board[from_index].as_ref().unwrap().clone();
+        let mut board = board.clone();
+
+        let mut prev_positions = piece.prev_positions.clone();
+        prev_positions.push(piece.position);
+
+        let capture = board[to_index].is_some();
+
+        board[to_index] = Some(Piece {
+            piece_type: piece.piece_type,
+            color: piece.color,
+            position: to,
+            prev_positions,
+        });
+
+        board[from_index] = None;
+
+        (board, capture)
+    }
+
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
         if self.status != Status::Chilling && !matches!(self.status, Status::Check(_)) {
             return ValidationResult::InvalidTurn;
@@ -316,6 +378,8 @@ impl Chess {
                     continue;
                 }
 
+                // PIECE MOVE LOGIC START
+
                 let from_index = m.piece.position.y * 8 + m.piece.position.x;
                 let to_index = m.to.y * 8 + m.to.x;
 
@@ -330,6 +394,8 @@ impl Chess {
                     prev_positions: piece.prev_positions.clone(),
                 });
                 validate_board[from_index] = None;
+
+                // PIECE MOVE LOGIC END
 
                 let new_valid_moves = generate_moves(&validate_board);
 
@@ -353,30 +419,17 @@ impl Chess {
                 }
 
                 let from_index = from.y * 8 + from.x;
-                let to_index = to.y * 8 + to.x;
-
                 let piece = self.board[from_index].as_ref().unwrap().clone();
 
-                let mut prev_positions = piece.prev_positions.clone();
-                prev_positions.push(piece.position);
-
-                let capture = self.board[to_index].is_some();
-
-                self.board[to_index] = Some(Piece {
-                    piece_type: piece.piece_type,
-                    color: piece.color,
-                    position: to,
-                    prev_positions,
-                });
-                self.board[from_index] = None;
+                let board_res = self.move_piece_on_board(&self.board, from, to);
+                self.board = board_res.0;
+                let capture = board_res.1;
 
                 if piece.piece_type == PieceType::Pawn || capture {
                     self.counter_50_move_rule = 0;
                 } else {
                     self.counter_50_move_rule += 1;
                 }
-
-                println!("{:?}", self.counter_50_move_rule);
 
                 if self.counter_50_move_rule >= 100 {
                     self.status = Status::Draw(DrawType::FiftyMoveRule);
@@ -650,8 +703,6 @@ impl Chess {
         let new_valid_moves = generate_moves(&validate_board);
 
         let new_status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
-
-        println!("{:?}", new_status);
 
         match new_status {
             Status::Check(c) => c != self.turn,

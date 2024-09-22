@@ -79,10 +79,11 @@ mod tests {
     fn check_en_passant() {
         let mut chess = Chess::from_fen("k7/2p5/8/3P4/8/8/8/K7 b").unwrap();
         chess.move_piece(Position::from_str("c7"), Position::from_str("c5"));
-        println!("NOW");
+
         let res = chess.move_piece(Position::from_str("d5"), Position::from_str("c6"));
-        println!("{:?}", res);
+
         assert!(matches!(res, ValidationResult::Valid(_)));
+        //assert!(chess.board[4 * 8 + 2].is_none());
     }
 
     #[test]
@@ -156,7 +157,6 @@ mod tests {
         let mut chess = Chess::from_fen("rrrrrrrr/8/8/8/8/8/8/RRRRRRRR w").unwrap();
         for i in 0..3 {
             for j in 0..8 {
-                println!("{}, {}", i, j);
                 chess.move_piece(Position { x: j, y: i }, Position { x: j, y: i + 1 });
                 chess.move_piece(
                     Position { x: j, y: 7 - i },
@@ -170,7 +170,6 @@ mod tests {
 
         for i in (1..4).rev() {
             for j in 0..8 {
-                println!("{}, {}", i, j);
                 chess.move_piece(Position { x: j, y: i }, Position { x: j, y: i - 1 });
                 chess.move_piece(
                     Position { x: j, y: 7 - i },
