@@ -1,14 +1,6 @@
-use crate::{Board, Color, Piece, PieceType, Position};
+use crate::{Board, Color, Move, Piece, PieceType, Position};
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Move {
-    pub piece: Piece,
-    pub from: Position,
-    pub to: Position,
-    pub take_piece: bool,
-}
-
-pub type ValidBoardMoves = [Option<Vec<Move>>; 64];
+pub type ValidBoardMoves = [Vec<Move>; 64];
 
 //pub type PossibleMove = (i8, i8, Vec<(i8, i8)>);
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +8,7 @@ pub struct PossibleMove {
     pub x: i8,
     pub y: i8,
     pub pre_moves: Option<Vec<(i8, i8)>>,
+    castling: bool,
 }
 
 fn valid_position(x: i8, y: i8) -> bool {
@@ -24,7 +17,7 @@ fn valid_position(x: i8, y: i8) -> bool {
 
 pub fn generate_moves(board: &Board) -> ValidBoardMoves {
     //hacky solution to get around bitchy compiler
-    let mut valid_moves = std::array::from_fn(|_| None);
+    let mut valid_moves = std::array::from_fn(|_| Vec::new());
     for i in 0..64 {
         let tile = &board[i];
 
@@ -38,9 +31,9 @@ pub fn generate_moves(board: &Board) -> ValidBoardMoves {
                     PieceType::Knight => valid_moves_knight(board, piece),
                     PieceType::Pawn => valid_moves_pawn(board, piece),
                 };
-                valid_moves[i] = Some(res);
+                valid_moves[i] = res;
             }
-            None => valid_moves[i] = None,
+            None => valid_moves[i] = Vec::new(),
         };
     }
 
@@ -85,7 +78,7 @@ fn validate_possible_moves(
             let tile = &board[(y * 8 + x) as usize];
             match tile {
                 Some(p) => {
-                    if p.color != piece.color {
+                    if p.color != piece.color || possible_move.castling {
                         valid_moves.push(Move {
                             piece: piece.clone(),
                             from: piece.position,
@@ -93,7 +86,7 @@ fn validate_possible_moves(
                                 x: x as usize,
                                 y: y as usize,
                             },
-                            take_piece: true,
+                            take_piece: !possible_move.castling,
                         });
                     }
                 }
@@ -135,6 +128,7 @@ fn generate_directional_possible_moves(
                 x,
                 y,
                 pre_moves: Some(prev_moves.clone()),
+                castling: false,
             });
 
             prev_moves.push((x, y));
@@ -149,6 +143,7 @@ fn relative_to_absolut_move(piece: &Piece, relative_move: (i8, i8)) -> PossibleM
         x: piece.position.x as i8 + relative_move.0,
         y: piece.position.y as i8 + relative_move.1,
         pre_moves: None,
+        castling: false,
     }
 }
 
@@ -171,7 +166,10 @@ fn valid_moves_king(board: &Board, piece: &Piece) -> Vec<Move> {
         (-1, -1),
     ];
 
-    let possible_moves = relative_to_absolute_moves(piece, moves);
+    let mut possible_moves = relative_to_absolute_moves(piece, moves);
+
+    let castling_moves = valid_castling_moves(board, piece);
+    possible_moves.extend(castling_moves);
 
     validate_possible_moves(board, piece, possible_moves)
 }
@@ -229,6 +227,7 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
             x: x + (piece.position.x as i8),
             y: y * (piece.color as i8) + (piece.position.y as i8),
             pre_moves: None,
+            castling: false,
         }
     }
 
@@ -308,4 +307,56 @@ fn valid_moves_pawn(board: &Board, piece: &Piece) -> Vec<Move> {
     }
 
     validate_possible_moves(board, piece, moves)
+}
+
+fn valid_castling_moves(board: &Board, piece: &Piece) -> Vec<PossibleMove> {
+    let row = if piece.color == Color::White { 0 } else { 7 };
+    /* let (side, row) = match castling_type {
+        CastlingType::QueenSide(c) => (0, if c == Color::White { 0 } else { 7 }),
+        CastlingType::KingSide(c) => (1, if c == Color::White { 0 } else { 7 }),
+    }; */
+
+    let mut moves = Vec::new();
+
+    for side in 0..2 {
+        let king_index = row * 8 + 4;
+        let rook_index = row * 8 + (7 * side);
+
+        if board[king_index].is_none() || board[rook_index].is_none() {
+            continue;
+        }
+
+        let king = board[king_index].as_ref().unwrap();
+        let rook = board[rook_index].as_ref().unwrap();
+
+        if !rook.prev_positions.is_empty() || !rook.prev_positions.is_empty() {
+            continue;
+        }
+
+        let mut x = king.position.x as i8;
+        let y = king.position.y as i8;
+
+        let tiles_to_check = if side == 0 { 3 } else { 2 };
+
+        for _ in 0..tiles_to_check {
+            x += if side == 0 { -1 } else { 1 };
+            if board[(y * 8 + x) as usize].is_some() {
+                continue;
+            }
+        }
+
+        let king_to = Position {
+            x: ((king.position.x as i8) + (if side == 0 { -4 } else { 3 })) as usize,
+            y: king.position.y,
+        };
+
+        moves.push(PossibleMove {
+            x: king_to.x as i8,
+            y: king_to.y as i8,
+            pre_moves: None,
+            castling: true,
+        });
+    }
+
+    moves
 }

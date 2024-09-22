@@ -42,6 +42,20 @@ mod tests {
     }
 
     #[test]
+    fn check_valid_moves() {
+        let mut chess = Chess::from_fen("k7/8/8/8/8/8/8/1Q6 w").unwrap();
+
+        let res = chess.move_piece(Position::from_str("a8"), Position::from_str("a7"));
+        assert!(matches!(res, ValidationResult::InvalidTurn));
+
+        let res = chess.move_piece(Position::from_str("b1"), Position::from_str("a1"));
+        assert_eq!(res, ValidationResult::Valid(Status::Check(Color::Black)));
+
+        let res = chess.move_piece(Position::from_str("a8"), Position::from_str("a7"));
+        assert!(matches!(res, ValidationResult::InvalidMove));
+    }
+
+    #[test]
     fn check_stalemate() {
         let mut chess = Chess::from_fen("k7/8/2Q5/8/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("c6"), Position::from_str("b6"));
@@ -50,6 +64,13 @@ mod tests {
         let mut chess = Chess::from_fen("1B6/8/8/3k4/8/B7/8/2R1R3 w").unwrap();
         chess.move_piece(Position::from_str("a3"), Position::from_str("b2"));
         assert_eq!(chess.status, Status::Draw(DrawType::Stalemate));
+
+        let mut chess = Chess::from_fen("k7/8/8/8/8/8/8/K1R3Q1 w").unwrap();
+        let res = chess.move_piece(Position::from_str("c1"), Position::from_str("b1"));
+        assert_eq!(
+            res,
+            ValidationResult::Valid(Status::Draw(DrawType::Stalemate))
+        );
     }
 
     #[test]
@@ -57,13 +78,24 @@ mod tests {
         let mut chess = Chess::from_fen("k7/7R/2Q5/8/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("c6"), Position::from_str("b7"));
         assert_eq!(chess.status, Status::Checkmate(Color::Black));
+        assert_eq!(chess.winner, Some(Color::White));
 
         let mut chess = Chess::from_fen("k7/2QN3R/1P6/1N6/8/8/8/K7 w").unwrap();
         chess.move_piece(Position::from_str("b6"), Position::from_str("b7"));
         assert_eq!(chess.status, Status::Checkmate(Color::Black));
+        assert_eq!(chess.winner, Some(Color::White));
 
         let chess = Chess::from_fen("k7/8/8/8/8/8/8/QR6 w").unwrap();
         assert_eq!(chess.status, Status::Checkmate(Color::Black));
+        assert_eq!(chess.winner, Some(Color::White));
+
+        let mut chess = Chess::from_fen("k7/8/8/8/8/8/1R6/KR4Q1 w").unwrap();
+        let res = chess.move_piece(Position::from_str("b2"), Position::from_str("a2"));
+        assert_eq!(
+            res,
+            ValidationResult::Valid(Status::Checkmate(Color::Black))
+        );
+        assert_eq!(chess.winner, Some(Color::White));
     }
 
     #[test]
@@ -83,55 +115,50 @@ mod tests {
         let res = chess.move_piece(Position::from_str("d5"), Position::from_str("c6"));
 
         assert!(matches!(res, ValidationResult::Valid(_)));
-        //assert!(chess.board[4 * 8 + 2].is_none());
+        assert!(chess.board[4 * 8 + 2].is_none());
     }
 
     #[test]
-    fn check_castling_possible() {
-        let chess = Chess::from_fen("4k2r/8/8/8/8/8/8/R3K3 b").unwrap();
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::White)));
-        assert!(!chess.check_castling_possible(CastlingType::KingSide(Color::White)));
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::Black)));
-        assert!(chess.check_castling_possible(CastlingType::KingSide(Color::Black)));
+    fn check_castling() {
+        let mut chess = Chess::from_fen("4k3/8/8/8/8/8/8/R3K3 w").unwrap();
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("a1"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
+        assert_eq!(chess.board[2].as_ref().unwrap().piece_type, PieceType::King);
+        assert_eq!(chess.board[3].as_ref().unwrap().piece_type, PieceType::Rook);
 
-        let chess = Chess::from_fen("r2qk3/8/8/8/8/8/8/4K1NR w").unwrap();
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::White)));
-        assert!(!chess.check_castling_possible(CastlingType::KingSide(Color::White)));
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::Black)));
-        assert!(!chess.check_castling_possible(CastlingType::KingSide(Color::Black)));
+        let mut chess = Chess::from_fen("2q1k3/8/8/8/8/8/8/R3K3 w").unwrap();
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("a1"));
+        assert_eq!(res, ValidationResult::InvalidMove);
 
-        let mut chess = Chess::from_fen("4k2r/8/8/8/8/8/8/R3K3 w").unwrap();
-        chess.move_piece(Position::from_str("a1"), Position::from_str("a2"));
-        chess.move_piece(Position::from_str("h8"), Position::from_str("h7"));
-        chess.move_piece(Position::from_str("a2"), Position::from_str("a1"));
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::White)));
+        let mut chess = Chess::from_fen("3qk3/8/8/8/8/8/8/R3K3 w").unwrap();
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("a1"));
+        assert_eq!(res, ValidationResult::InvalidMove);
 
-        let chess = Chess::from_fen("2q4k/8/8/8/8/8/8/R3K3 w").unwrap();
-        assert!(!chess.check_castling_possible(CastlingType::QueenSide(Color::White)));
-    }
+        let mut chess = Chess::from_fen("r3kq2/8/8/8/8/8/8/RQ2K3 b").unwrap();
+        let res = chess.move_piece(Position::from_str("e8"), Position::from_str("a8"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
 
-    #[test]
-    fn check_castling_real() {
-        let mut chess = Chess::from_fen("6qk/8/8/8/8/8/8/R3K3 w").unwrap();
-        let res = chess.perform_castling(CastlingType::QueenSide(Color::White));
-        assert!(matches!(res, ValidationResult::Valid(_)));
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("a1"));
+        assert_eq!(res, ValidationResult::InvalidMove);
 
-        let mut chess = Chess::from_fen("2q4k/8/8/8/8/8/8/R3K3 w").unwrap();
-        let res = chess.perform_castling(CastlingType::QueenSide(Color::White));
-        assert!(matches!(res, ValidationResult::InvalidMove));
+        let mut chess = Chess::from_fen("q3k2r/8/8/8/8/8/5Q2/4K2R b").unwrap();
+        let res = chess.move_piece(Position::from_str("e8"), Position::from_str("h8"));
+        assert_eq!(res, ValidationResult::InvalidMove);
+        let res = chess.move_piece(Position::from_str("e8"), Position::from_str("f8"));
+        assert_eq!(res, ValidationResult::InvalidMove);
+        let res = chess.move_piece(Position::from_str("e8"), Position::from_str("d8"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
 
-        let mut chess = Chess::from_fen("4k2r/8/8/8/8/8/8/4K2R w").unwrap();
-        chess.perform_castling(CastlingType::KingSide(Color::White));
-        chess.perform_castling(CastlingType::KingSide(Color::Black));
-        chess.board.iter().for_each(|p| {
-            if let Some(piece) = p {
-                if piece.piece_type == PieceType::King {
-                    assert_eq!(piece.position.x, 6);
-                } else if piece.piece_type == PieceType::Rook {
-                    assert_eq!(piece.position.x, 5);
-                }
-            }
-        });
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("h1"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
+
+        let mut chess = Chess::from_fen("q3k2r/8/8/8/8/8/5Q2/4K1R1 w").unwrap();
+        let res = chess.move_piece(Position::from_str("g1"), Position::from_str("h1"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
+        let res = chess.move_piece(Position::from_str("e8"), Position::from_str("d8"));
+        assert_eq!(res, ValidationResult::Valid(Status::Chilling));
+        let res = chess.move_piece(Position::from_str("e1"), Position::from_str("h1"));
+        assert_eq!(res, ValidationResult::InvalidMove);
     }
 
     #[test]
@@ -187,5 +214,24 @@ mod tests {
         }
 
         assert_eq!(chess.status, Status::Draw(DrawType::FiftyMoveRule));
+    }
+
+    #[test]
+    fn test_possible_moves() {
+        let chess = Chess::from_fen("k7/8/8/8/r7/8/7r/K7 w").unwrap();
+
+        let moves = chess.generate_valid_moves();
+
+        assert_eq!(moves[0].len(), 1);
+        assert_eq!(moves[0][0].to, Position::from_str("b1"));
+
+        let chess = Chess::from_fen("k2r1r2/8/8/8/8/8/8/R3K3 w").unwrap();
+
+        let moves = chess.generate_valid_moves();
+
+        println!("{:?}", moves[4]);
+
+        assert_eq!(moves[4].len(), 1);
+        assert_eq!(moves[4][0].to, Position::from_str("e2"));
     }
 }

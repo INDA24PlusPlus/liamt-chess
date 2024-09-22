@@ -27,10 +27,8 @@ match res {
     ValidationResult::Valid(status) => {
         if let Status::Checkmate(_) = status {
             println!("Checkmate! {:?} wins", chess.winner.unwrap()); // chess.winner innehåller vinnaren av spelet
-            break;
         } else if let Status::Draw(d) = status {
             println!("Draw! {:?}", d);
-            break;
         } else if let Status::Check(c) = status {
             println!("Check on {:?}!", c);
         } else if status == Status::AwaitingPromotion {
@@ -42,31 +40,19 @@ match res {
     //...
     _ => {
         println!("ERROR: {:?}", res);
-        continue;
     }
 }
 
-// Du kanske också vill utföra en rockad, det kan du göra såhär:
-let res: ValidationResult = chess.perform_castling(CastlingType::KingSide(Color::White));
-let res: ValidationResult = chess.perform_castling(CastlingType::QueenSide(Color::White));
-let res: ValidationResult = chess.perform_castling(CastlingType::KingSide(Color::Black));
-let res: ValidationResult = chess.perform_castling(CastlingType::QueenSide(Color::Black));
+// Om du vill få alla möjliga drag som en spelare kan göra kan du göra det såhär
 
-match res {
-    ValidationResult::Valid(status) => {
-        println("Castling successful!");
-    },
-    ValidationResult::InvalidMove => {
-        println("Castling failed!");
-    },
-    _ => {
-        println!("ERROR: {:?}", res);
-        continue;
-    }
+assert_eq!(chess.turn, Color::White);
+let moves: [Vec<Move>; 64] = chess.generate_valid_moves(); // Alla möjliga drag som vit kan göra
+for i in 0..64 {
+    println!("Pjäs på position {:?} kan göra följande drag: {:?}", Position::from_index(i), moves[i]);
 }
 
-// Du kan även kolla om rokad är möjligt, den returnerar en bool som indikerar om rockad är möjlig
-let castling_possible: bool = chess.check_castling_possible(CastlingType::KingSide(Color::White));
+// Om du vill utföra rockad så kan du göra det såhär
+let res: ValidationResult = chess.move_piece(Position::from_str("e1"), Position::from_str("a1")); // Alltså du flyttar kungen till tornets position
 
 // Det finns även lite attributer som ger dig användbar information
 let current_turn: Color = chess.turn; // Vems tur det är
@@ -75,13 +61,10 @@ let status: Status = chess.status; // Statusen av spelet, alltså om det är sch
 
 // Du kan även indexera brädet för att få en specifik pjäs
 // Detta kan vara användbart när du vill printa ut brädet
-
 for y in 0..8 {
     for x in 0..8 {
         // Vill börja med de svarta rutorna i nedre vänstra hörnet
-        let piece: Option<Piece> = board[(7 - i) * 8 + j];
-
-        match piece {
+        match &chess.board[(7 - x) * 8 + y] {
             Some(p) => {
                 println!("Färg: {:?}. Pjäs-typ: {:?}. Position: {:?}", p.color, p.piece_type, p.position);
             },

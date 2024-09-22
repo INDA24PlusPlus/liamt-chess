@@ -63,9 +63,17 @@ pub enum CastlingType {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MoveType {
     Normal,
-    Castling,
+    Castling(CastlingType),
     Promotion,
     EnPassant,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Move {
+    pub piece: Piece,
+    pub from: Position,
+    pub to: Position,
+    pub take_piece: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,6 +93,15 @@ impl Position {
         let x = s.chars().nth(0).unwrap() as usize - 'a' as usize;
         let y = s.chars().nth(1).unwrap() as usize - '1' as usize;
         Position { x, y }
+    }
+    pub fn from_index(index: usize) -> Self {
+        Position {
+            x: index % 8,
+            y: index / 8,
+        }
+    }
+    pub fn to_index(&self) -> usize {
+        self.y * 8 + self.x
     }
 }
 
@@ -248,14 +265,12 @@ impl Chess {
             turn,
             winner: None,
             status: Status::Chilling,
-            valid_moves: std::array::from_fn(|_| None),
+            valid_moves: std::array::from_fn(|_| Vec::new()),
             awaiting_promotion_piece: None,
             counter_50_move_rule: 0,
             prev_boards: std::collections::HashMap::new(),
         };
-        chess.update();
-
-        chess.threefold_rule();
+        chess.update(false);
 
         Ok(chess)
     }
@@ -263,11 +278,27 @@ impl Chess {
     fn get_move_type(&self, from: Position, to: Position) -> MoveType {
         let from_index = from.y * 8 + from.x;
 
-        let piece = self.board[from_index].as_ref().unwrap();
+        let piece = self.board[from_index].as_ref();
 
-        let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
+        if piece.is_none() {
+            return MoveType::Normal;
+        }
 
-        let mov = valid_piece_moves.iter().find(|m| m.to == to).unwrap();
+        if piece.is_none() {
+            return MoveType::Normal;
+        }
+
+        let piece = piece.unwrap();
+
+        let valid_piece_moves = self.valid_moves[from_index].clone();
+
+        let mov = valid_piece_moves.iter().find(|m| m.to == to);
+
+        if mov.is_none() {
+            return MoveType::Normal;
+        }
+
+        let mov = mov.unwrap();
 
         if mov.piece.piece_type == PieceType::Pawn
             && ((to.y == 0 && piece.color == Color::White)
@@ -276,8 +307,14 @@ impl Chess {
             return MoveType::Promotion;
         }
 
-        if piece.piece_type == PieceType::King && (from.x as i8 - to.x as i8).abs() == 2 {
-            return MoveType::Castling;
+        let delta = (from.x as i8 - to.x as i8).abs();
+
+        if piece.piece_type == PieceType::King && (delta == 3 || delta == 4) {
+            if to.x == 0 {
+                return MoveType::Castling(CastlingType::QueenSide(piece.color));
+            } else if to.x == 7 {
+                return MoveType::Castling(CastlingType::KingSide(piece.color));
+            }
         }
 
         if mov.piece.piece_type == PieceType::Pawn
@@ -300,18 +337,74 @@ impl Chess {
         let mut prev_positions = piece.prev_positions.clone();
         prev_positions.push(piece.position);
 
-        let capture = board[to_index].is_some();
+        let mut capture = board[to_index].is_some();
 
-        board[to_index] = Some(Piece {
-            piece_type: piece.piece_type,
-            color: piece.color,
-            position: to,
-            prev_positions,
-        });
+        let move_type = self.get_move_type(from, to);
 
-        board[from_index] = None;
+        match move_type {
+            MoveType::Castling(t) => {
+                board = self.perform_castling(board, t);
+            }
+            MoveType::EnPassant => {
+                board[to_index] = Some(Piece {
+                    piece_type: piece.piece_type,
+                    color: piece.color,
+                    position: to,
+                    prev_positions,
+                });
+                board[from_index] = None;
+                board[to_index - 8 * piece.color as usize] = None;
+                capture = true;
+            }
+            _ => {
+                board[to_index] = Some(Piece {
+                    piece_type: piece.piece_type,
+                    color: piece.color,
+                    position: to,
+                    prev_positions,
+                });
+                board[from_index] = None;
+            }
+        }
 
         (board, capture)
+    }
+
+    pub fn generate_valid_moves(&self) -> [Vec<Move>; 64] {
+        const ARRAY_REPEAT_VALUE: Vec<Move> = Vec::new();
+        let mut moves = [ARRAY_REPEAT_VALUE; 64];
+
+        let pseudo_possible_moves = generate_moves(&self.board);
+
+        for (i, tile) in pseudo_possible_moves.iter().enumerate() {
+            for mov in tile {
+                let validate_board = self
+                    .move_piece_on_board(&self.board, mov.piece.position, mov.to)
+                    .0;
+
+                let new_valid_moves = generate_moves(&validate_board);
+
+                if mov.piece.color != self.turn {
+                    continue;
+                }
+
+                let status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
+
+                let mov_type = self.get_move_type(mov.piece.position, mov.to);
+
+                if let MoveType::Castling(t) = mov_type {
+                    if !self.check_castling_possible(t) {
+                        continue;
+                    }
+                }
+
+                if status != Status::Check(self.turn) && status != Status::Checkmate(self.turn) {
+                    moves[i].push(mov.clone());
+                }
+            }
+        }
+
+        moves
     }
 
     pub fn validate_move(&self, from: Position, to: Position) -> ValidationResult {
@@ -338,64 +431,39 @@ impl Chess {
             return ValidationResult::InvalidTurn;
         }
 
-        let valid_piece_moves = self.valid_moves[from_index].as_ref().unwrap();
+        let move_type = self.get_move_type(from, to);
+
+        if let MoveType::Castling(t) = move_type {
+            if !self.check_castling_possible(t) {
+                return ValidationResult::InvalidMove;
+            }
+        }
+
+        let valid_piece_moves = self.valid_moves[from_index].clone();
 
         if !valid_piece_moves.iter().any(|m| m.to == to) {
             return ValidationResult::InvalidMove;
         }
 
-        let mut validate_board: [Option<Piece>; 64] = self.board.clone();
-
-        let mut prev_positions = piece.prev_positions.clone();
-        prev_positions.push(piece.position);
-
-        validate_board[to_index] = Some(Piece {
-            piece_type: piece.piece_type,
-            color: piece.color,
-            position: to,
-            prev_positions,
-        });
-
-        validate_board[from_index] = None;
+        let validate_board = self.move_piece_on_board(&self.board, from, to).0;
 
         let new_valid_moves = generate_moves(&validate_board);
 
-        let next_turn = !self.turn;
-
-        ValidationResult::Valid(self.get_board_status(&validate_board, &new_valid_moves, next_turn))
+        ValidationResult::Valid(self.get_board_status(
+            &validate_board,
+            &new_valid_moves,
+            !self.turn,
+        ))
     }
 
     fn cant_move(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
         for mov in valid_moves.iter() {
-            if mov.is_none() {
-                continue;
-            }
-
-            let mov = mov.as_ref().unwrap();
-
             for m in mov.iter() {
                 if m.piece.color != color {
                     continue;
                 }
 
-                // PIECE MOVE LOGIC START
-
-                let from_index = m.piece.position.y * 8 + m.piece.position.x;
-                let to_index = m.to.y * 8 + m.to.x;
-
-                let piece = board[from_index].clone().unwrap();
-
-                let mut validate_board: [Option<Piece>; 64] = board.clone();
-
-                validate_board[to_index] = Some(Piece {
-                    piece_type: piece.piece_type,
-                    color: piece.color,
-                    position: m.to,
-                    prev_positions: piece.prev_positions.clone(),
-                });
-                validate_board[from_index] = None;
-
-                // PIECE MOVE LOGIC END
+                let validate_board = self.move_piece_on_board(board, m.piece.position, m.to).0;
 
                 let new_valid_moves = generate_moves(&validate_board);
 
@@ -413,7 +481,7 @@ impl Chess {
     pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
         let validation_res = self.validate_move(from, to);
         match validation_res {
-            ValidationResult::Valid(status) => {
+            ValidationResult::Valid(_) => {
                 if validation_res == ValidationResult::Valid(Status::Check(self.turn)) {
                     return ValidationResult::InvalidMove;
                 }
@@ -431,30 +499,7 @@ impl Chess {
                     self.counter_50_move_rule += 1;
                 }
 
-                if self.counter_50_move_rule >= 100 {
-                    self.status = Status::Draw(DrawType::FiftyMoveRule);
-                    return ValidationResult::Valid(self.status);
-                }
-
-                if let Status::Checkmate(color) = status {
-                    self.winner = Some(!color);
-                } else if status == Status::Draw(DrawType::Stalemate) {
-                    self.winner = None;
-                }
-                self.status = status;
-
-                self.threefold_rule();
-
-                self.valid_moves = generate_moves(&self.board);
-
-                self.awaiting_promotion_piece = self.check_for_promotion();
-
-                if self.awaiting_promotion_piece.is_some() {
-                    self.status = Status::AwaitingPromotion;
-                } else {
-                    // Switch turn if no promotion
-                    self.turn = !self.turn;
-                }
+                self.update(true);
 
                 ValidationResult::Valid(self.status)
             }
@@ -462,16 +507,30 @@ impl Chess {
         }
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, switch_turn: bool) {
+        self.awaiting_promotion_piece = self.check_for_promotion();
+        if switch_turn {
+            self.turn = !self.turn;
+        }
+
         self.valid_moves = generate_moves(&self.board);
 
-        let validation_res = self.get_board_status(&self.board, &self.valid_moves, self.turn);
+        let board_status = self.get_board_status(&self.board, &self.valid_moves, self.turn);
 
-        self.status = validation_res;
+        self.status = board_status;
 
-        self.awaiting_promotion_piece = self.check_for_promotion();
+        if let Status::Checkmate(color) = self.status {
+            self.winner = Some(!color);
+        } else if self.status == Status::Draw(DrawType::Stalemate) {
+            self.winner = None;
+        }
 
-        if self.awaiting_promotion_piece.is_some() {
+        let three_fold_status = self.threefold_rule(true);
+        if self.counter_50_move_rule >= 100 {
+            self.status = Status::Draw(DrawType::FiftyMoveRule);
+        } else if three_fold_status == Status::Draw(DrawType::ThreefoldRepetition) {
+            self.status = Status::Draw(DrawType::ThreefoldRepetition);
+        } else if self.awaiting_promotion_piece.is_some() {
             self.status = Status::AwaitingPromotion;
         }
     }
@@ -543,13 +602,7 @@ impl Chess {
 
         self.awaiting_promotion_piece = None;
 
-        self.status = Status::Chilling;
-
-        self.turn = !self.turn;
-
-        self.threefold_rule();
-
-        self.update();
+        self.update(true);
 
         Some(self.status)
     }
@@ -574,11 +627,7 @@ impl Chess {
             let mut is_check = false;
 
             valid_moves.iter().for_each(|n| {
-                if n.is_none() {
-                    return;
-                }
-
-                if n.as_ref().unwrap().iter().any(|m| {
+                if n.iter().any(|m| {
                     if m.piece.color != king.color && m.to == king.position {
                         return true;
                     }
@@ -617,7 +666,7 @@ impl Chess {
         None
     }
 
-    pub fn check_castling_possible(&self, castling_type: CastlingType) -> bool {
+    fn check_castling_possible(&self, castling_type: CastlingType) -> bool {
         if self.status != Status::Chilling {
             return false;
         }
@@ -661,63 +710,66 @@ impl Chess {
             }
         }
 
-        let mut validate_board: [Option<Piece>; 64] = self.board.clone();
+        for i in 1..3 {
+            let mut validate_board: [Option<Piece>; 64] = self.board.clone();
 
-        let king_to = Position {
-            x: ((king.position.x as i8) + (if side == 0 { -2 } else { 2 })) as usize,
-            y: king.position.y,
-        };
-        let rook_to = Position {
-            x: ((rook.position.x as i8) + (if side == 0 { 3 } else { -2 })) as usize,
-            y: rook.position.y,
-        };
-        let king_to_index = king_to.y * 8 + king_to.x;
-        let rook_to_index = rook_to.y * 8 + rook_to.x;
-        let king_from_index = king.position.y * 8 + king.position.x;
-        let rook_from_index = rook.position.y * 8 + rook.position.x;
+            let king_to = Position {
+                x: ((king.position.x as i8) + (if side == 0 { -i } else { i })) as usize,
+                y: king.position.y,
+            };
+            let rook_to = Position {
+                x: ((rook.position.x as i8) + (if side == 0 { 3 } else { -2 })) as usize,
+                y: rook.position.y,
+            };
+            let king_to_index = king_to.y * 8 + king_to.x;
+            let rook_to_index = rook_to.y * 8 + rook_to.x;
+            let king_from_index = king.position.y * 8 + king.position.x;
+            let rook_from_index = rook.position.y * 8 + rook.position.x;
 
-        let mut king_prev_positions = king.prev_positions.clone();
-        king_prev_positions.push(king.position);
+            let mut king_prev_positions = king.prev_positions.clone();
+            king_prev_positions.push(king.position);
 
-        let mut rook_prev_positions = rook.prev_positions.clone();
-        rook_prev_positions.push(rook.position);
+            let mut rook_prev_positions = rook.prev_positions.clone();
+            rook_prev_positions.push(rook.position);
 
-        validate_board[king_to_index] = Some(Piece {
-            piece_type: king.piece_type,
-            color: king.color,
-            position: king_to,
-            prev_positions: king_prev_positions,
-        });
+            validate_board[rook_to_index] = Some(Piece {
+                piece_type: rook.piece_type,
+                color: rook.color,
+                position: rook_to,
+                prev_positions: rook_prev_positions,
+            });
 
-        validate_board[king_from_index] = None;
+            validate_board[rook_from_index] = None;
 
-        validate_board[rook_to_index] = Some(Piece {
-            piece_type: rook.piece_type,
-            color: rook.color,
-            position: rook_to,
-            prev_positions: rook_prev_positions,
-        });
+            validate_board[king_to_index] = Some(Piece {
+                piece_type: king.piece_type,
+                color: king.color,
+                position: king_to,
+                prev_positions: king_prev_positions,
+            });
 
-        validate_board[rook_from_index] = None;
+            validate_board[king_from_index] = None;
 
-        let new_valid_moves = generate_moves(&validate_board);
+            let new_valid_moves = generate_moves(&validate_board);
 
-        let new_status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
+            let new_status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
 
-        match new_status {
-            Status::Check(c) => c != self.turn,
-            Status::Checkmate(c) => c != self.turn,
-            Status::Draw(_) => false,
-            _ => true,
+            let valid = match new_status {
+                Status::Check(c) => c != self.turn,
+                Status::Checkmate(c) => c != self.turn,
+                Status::Draw(_) => false,
+                _ => true,
+            };
+            if !valid {
+                return false;
+            }
         }
+
+        true
     }
 
-    pub fn perform_castling(&mut self, castling_type: CastlingType) -> ValidationResult {
-        let possible = self.check_castling_possible(castling_type);
-
-        if !possible {
-            return ValidationResult::InvalidMove;
-        }
+    fn perform_castling(&self, board: Board, castling_type: CastlingType) -> Board {
+        let mut board = board.clone();
 
         let (side, row) = match castling_type {
             CastlingType::QueenSide(c) => (0, if c == Color::White { 0 } else { 7 }),
@@ -727,8 +779,8 @@ impl Chess {
         let king_index = row * 8 + 4;
         let rook_index = row * 8 + (7 * side);
 
-        let king = self.board[king_index].as_ref().unwrap().clone();
-        let rook = self.board[rook_index].as_ref().unwrap().clone();
+        let king = board[king_index].as_ref().unwrap().clone();
+        let rook = board[rook_index].as_ref().unwrap().clone();
 
         let king_to = Position {
             x: ((king.position.x as i8) + (if side == 0 { -2 } else { 2 })) as usize,
@@ -749,45 +801,40 @@ impl Chess {
         let mut rook_prev_positions = rook.prev_positions.clone();
         rook_prev_positions.push(rook.position);
 
-        self.board[king_to_index] = Some(Piece {
+        board[king_to_index] = Some(Piece {
             piece_type: king.piece_type,
             color: king.color,
             position: king_to,
             prev_positions: king_prev_positions,
         });
 
-        self.board[king_from_index] = None;
+        board[king_from_index] = None;
 
-        self.board[rook_to_index] = Some(Piece {
+        board[rook_to_index] = Some(Piece {
             piece_type: rook.piece_type,
             color: rook.color,
             position: rook_to,
             prev_positions: rook_prev_positions,
         });
 
-        self.board[rook_from_index] = None;
+        board[rook_from_index] = None;
 
-        self.status = Status::Chilling;
-
-        self.turn = !self.turn;
-
-        self.update();
-
-        ValidationResult::Valid(self.status)
+        board
     }
 
-    pub fn threefold_rule(&mut self) -> ValidationResult {
+    pub fn threefold_rule(&mut self, modify: bool) -> Status {
         let hash = hash_board(&self.board);
 
-        let entry = self.prev_boards.entry(hash.clone()).or_insert(0);
-        *entry += 1;
+        if modify {
+            let entry = self.prev_boards.entry(hash.clone()).or_insert(0);
+            *entry += 1;
+        }
 
         let count = self.prev_boards.get(&hash);
 
         if count.is_some_and(|c| *c >= 3) {
-            self.status = Status::Draw(DrawType::ThreefoldRepetition);
-            return ValidationResult::Valid(self.status);
+            return Status::Draw(DrawType::ThreefoldRepetition);
         }
-        ValidationResult::Valid(self.status)
+        self.status
     }
 }
