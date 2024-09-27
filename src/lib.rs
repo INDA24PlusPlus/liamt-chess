@@ -353,7 +353,7 @@ impl Chess {
                     prev_positions,
                 });
                 board[from_index] = None;
-                board[to_index - 8 * piece.color as usize] = None;
+                board[(to_index as isize - 8 * piece.color as isize) as usize] = None;
                 capture = true;
             }
             _ => {
