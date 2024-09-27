@@ -509,6 +509,11 @@ impl Chess {
 
     fn update(&mut self, switch_turn: bool) {
         self.awaiting_promotion_piece = self.check_for_promotion();
+        // Wait to "end" turn until piece has promoted
+        if self.awaiting_promotion_piece.is_some() {
+            self.status = Status::AwaitingPromotion;
+            return;
+        }
         if switch_turn {
             self.turn = !self.turn;
         }
@@ -530,8 +535,6 @@ impl Chess {
             self.status = Status::Draw(DrawType::FiftyMoveRule);
         } else if three_fold_status == Status::Draw(DrawType::ThreefoldRepetition) {
             self.status = Status::Draw(DrawType::ThreefoldRepetition);
-        } else if self.awaiting_promotion_piece.is_some() {
-            self.status = Status::AwaitingPromotion;
         }
     }
 
