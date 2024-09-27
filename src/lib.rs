@@ -388,7 +388,6 @@ impl Chess {
                     continue;
                 }
 
-                let status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
 
                 let mov_type = self.get_move_type(mov.piece.position, mov.to);
 
@@ -397,8 +396,7 @@ impl Chess {
                         continue;
                     }
                 }
-
-                if status != Status::Check(self.turn) && status != Status::Checkmate(self.turn) {
+                if !self.check_check(&validate_board, &new_valid_moves).is_some_and(|c| c.contains(&self.turn)) {
                     moves[i].push(mov.clone());
                 }
             }
@@ -450,32 +448,22 @@ impl Chess {
         let new_valid_moves = generate_moves(&validate_board);
 
         ValidationResult::Valid(self.get_board_status(
-            &validate_board,
-            &new_valid_moves,
             !self.turn,
         ))
     }
 
-    fn cant_move(&self, board: &Board, valid_moves: &ValidBoardMoves, color: Color) -> bool {
+    fn cant_move(&self, valid_moves: &ValidBoardMoves, color: Color) -> bool {
+        let mut count = 0;
         for mov in valid_moves.iter() {
             for m in mov.iter() {
                 if m.piece.color != color {
                     continue;
                 }
-
-                let validate_board = self.move_piece_on_board(board, m.piece.position, m.to).0;
-
-                let new_valid_moves = generate_moves(&validate_board);
-
-                let is_check = self.check_check(&validate_board, &new_valid_moves);
-
-                if !is_check.is_some_and(|c| c.contains(&color)) {
-                    return false;
-                }
+                count += 1;
             }
         }
+        count == 0
 
-        true
     }
 
     pub fn move_piece(&mut self, from: Position, to: Position) -> ValidationResult {
@@ -520,7 +508,7 @@ impl Chess {
 
         self.valid_moves = generate_moves(&self.board);
 
-        let board_status = self.get_board_status(&self.board, &self.valid_moves, self.turn);
+        let board_status = self.get_board_status(self.turn);
 
         self.status = board_status;
 
@@ -540,34 +528,21 @@ impl Chess {
 
     fn get_board_status(
         &self,
-        board: &Board,
-        valid_moves: &ValidBoardMoves,
         turn: Color,
     ) -> Status {
-        let is_check = self.check_check(board, valid_moves);
+        let is_check = self.is_check();
 
-        let im_stuck = self.cant_move(board, valid_moves, turn);
-        let opponent_stuck = self.cant_move(board, valid_moves, !turn);
+        let stuck = !self.generate_valid_moves().iter().any(|m| !m.is_empty());
 
         if is_check.is_some() {
-            let is_check = is_check.unwrap();
 
             // If the player is in check and can't move
-            if im_stuck && is_check.contains(&turn) {
+            if stuck {
                 return Status::Checkmate(turn);
             }
 
-            // If the opponent is in check and its player's turn
-            if opponent_stuck && is_check.contains(&!turn) {
-                return Status::Checkmate(!turn);
-            }
-
-            if is_check.contains(&turn) {
-                return Status::Check(turn);
-            }
-
-            return Status::Check(!turn);
-        } else if im_stuck {
+            return Status::Check(turn);
+        } else if stuck {
             return Status::Draw(DrawType::Stalemate);
         }
 
@@ -755,7 +730,7 @@ impl Chess {
 
             let new_valid_moves = generate_moves(&validate_board);
 
-            let new_status = self.get_board_status(&validate_board, &new_valid_moves, self.turn);
+            let new_status = self.get_board_status(self.turn);
 
             let valid = match new_status {
                 Status::Check(c) => c != self.turn,
